@@ -10,6 +10,38 @@ export interface TelegramMessage {
 }
 
 /**
+ * Log a non-article Telegram event (e.g. system notifications, errors, summaries)
+ * without requiring an articleId.
+ */
+export async function logTelegramEvent(
+  chatId: string,
+  status: 'pending' | 'sent' | 'failed',
+  errorMessage?: string
+): Promise<void> {
+  try {
+    await prisma.telegramLog.create({
+      data: {
+        articleId: 'system', // placeholder for non-article messages
+        chatIdMasked: maskChatId(chatId),
+        status,
+        errorMessage: errorMessage || '',
+        sentAt: status === 'sent' ? new Date() : null,
+      },
+    });
+  } catch (err) {
+    console.error('[Telegram] Failed to log event:', err);
+  }
+}
+
+/**
+ * Mask a chat ID for privacy logging.
+ */
+function maskChatId(chatId: string): string {
+  if (chatId.length <= 4) return '****';
+  return chatId.slice(0, 2) + '****' + chatId.slice(-2);
+}
+
+/**
  * Send a text message to a Telegram chat via Bot API.
  */
 export async function sendTelegramMessage(message: TelegramMessage): Promise<boolean> {
@@ -37,15 +69,12 @@ export async function sendTelegramMessage(message: TelegramMessage): Promise<boo
 
     const result = await response.json();
 
-    // Log the send attempt
-    await prisma.telegramLog.create({
-      data: {
-        chatId: message.chatId,
-        message: message.text.substring(0, 500),
-        success: result.ok,
-        error: result.ok ? null : result.description || 'Unknown error',
-      },
-    });
+    // Log the send attempt using the new helper
+    await logTelegramEvent(
+      message.chatId,
+      result.ok ? 'sent' : 'failed',
+      result.ok ? undefined : result.description || 'Unknown error'
+    );
 
     if (!result.ok) {
       console.error('[Telegram] API error:', result.description);
@@ -56,16 +85,38 @@ export async function sendTelegramMessage(message: TelegramMessage): Promise<boo
   } catch (err) {
     console.error('[Telegram] Send failed:', err);
 
-    await prisma.telegramLog.create({
-      data: {
-        chatId: message.chatId,
-        message: message.text.substring(0, 500),
-        success: false,
-        error: err instanceof Error ? err.message : 'Unknown error',
-      },
-    });
+    await logTelegramEvent(
+      message.chatId,
+      'failed',
+      err instanceof Error ? err.message : 'Unknown error'
+    );
 
     return false;
+  }
+}
+
+/**
+ * Log a Telegram send for a specific article.
+ * Uses the correct Prisma schema: articleId, chatIdMasked, status, errorMessage, sentAt.
+ */
+export async function logArticleTelegram(
+  articleId: string,
+  chatId: string,
+  status: 'pending' | 'sent' | 'failed',
+  errorMessage?: string
+): Promise<void> {
+  try {
+    await prisma.telegramLog.create({
+      data: {
+        articleId,
+        chatIdMasked: maskChatId(chatId),
+        status,
+        errorMessage: errorMessage || '',
+        sentAt: status === 'sent' ? new Date() : null,
+      },
+    });
+  } catch (err) {
+    console.error('[Telegram] Failed to log article telegram:', err);
   }
 }
 

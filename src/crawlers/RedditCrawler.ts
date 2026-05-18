@@ -3,6 +3,7 @@ import { ArticleData } from '@/types';
 
 interface RedditPost {
   data: {
+    id: string;
     title: string;
     selftext: string;
     url: string;
@@ -28,7 +29,6 @@ const SUBREDDITS = [
   'LocalLLaMA',
   'OpenAI',
   'singularity',
-  'ArtificialIntelligence',
   'deeplearning',
 ];
 
@@ -37,7 +37,7 @@ export class RedditCrawler extends BaseSourceCrawler {
   sourceType = 'reddit';
 
   async fetch(): Promise<ArticleData[]> {
-    const allPosts: RedditPost[] = [];
+    const allPosts: Array<{ subreddit: string; post: RedditPost['data'] }> = [];
 
     for (const subreddit of SUBREDDITS) {
       try {
@@ -48,34 +48,59 @@ export class RedditCrawler extends BaseSourceCrawler {
           }
         );
         const data: RedditResponse = await response.json();
-        allPosts.push(...data.data.children);
+        if (!data?.data?.children) {
+          console.warn(`[Reddit] r/${subreddit}: unexpected response shape, skipping`);
+          continue;
+        }
+        for (const child of data.data.children) {
+          if (child?.data) {
+            allPosts.push({ subreddit, post: child.data });
+          }
+        }
       } catch (err) {
-        console.error(`[Reddit] Error fetching r/${subreddit}:`, err);
+        console.error(`[Reddit] Error fetching r/${subreddit}:`, (err as Error).message);
       }
     }
 
     // Remove duplicates by title
     const seen = new Set<string>();
-    const uniquePosts = allPosts.filter(post => {
-      const lower = post.data.title.toLowerCase();
+    const uniquePosts = allPosts.filter(item => {
+      const lower = item.post.title.toLowerCase();
       if (seen.has(lower)) return false;
       seen.add(lower);
       return true;
     });
 
-    return uniquePosts.map(post => this.convertToArticle(post.data));
+    return uniquePosts.map(item => this.convertToArticle(item.post, item.subreddit));
   }
 
-  private convertToArticle(post: RedditPost['data']): ArticleData {
+  private subredditToSourceName(subreddit: string): string {
+    const map: Record<string, string> = {
+      'LocalLLaMA': 'Reddit r/LocalLLaMA',
+      'MachineLearning': 'Reddit r/MachineLearning',
+      'OpenAI': 'Reddit r/OpenAI',
+      // Subreddits without matching DB source will be tagged with a fallback
+      // and skipped by saveToDatabase()
+    };
+    const name = map[subreddit] || `Reddit r/${subreddit}`;
+    // Log source name once per subreddit (not per article)
+    console.log(`[Reddit] r/${subreddit} => sourceName="${name}"`);
+    return name;
+  }
+
+  private convertToArticle(post: RedditPost['data'], subreddit: string): ArticleData {
+    const sourceName = this.subredditToSourceName(subreddit);
     const tags = ['Reddit'];
     if (/llm|gpt|model/i.test(post.title)) tags.push('llm');
     if (/open source|github|release/i.test(post.title)) tags.push('open-source');
 
     return {
       title: post.title,
-      summaryVi: `[Reddit r/${post.permalink.split('/')[2]}] ${post.title}`,
+      slug: `reddit-${post.id}`,
+      summaryVi: `[Reddit r/${subreddit}] ${post.title}`,
       contentVi: post.selftext || '',
-      sourceName: this.name,
+      contentHash: '',
+      sourceName,
       sourceUrl: `https://reddit.com${post.permalink}`,
       originalUrl: post.url,
       originalTitle: post.title,

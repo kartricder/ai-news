@@ -107,8 +107,10 @@ export class GitHubTrendingCrawler extends BaseSourceCrawler {
 
     return {
       title: `${repo.name}: ${repo.description || 'A trending AI repository'}`,
+      slug: repo.full_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
       summaryVi: `⭐ Sao: ${repo.stargazers_count.toLocaleString()} | Ngôn ngữ: ${repo.language || 'N/A'} | Mô tả: ${repo.description || 'Không có mô tả'}`,
       contentVi: `## ${repo.full_name}\n\n${repo.description || ''}\n\n### Thông tin:\n- ⭐ Stars: ${repo.stargazers_count.toLocaleString()}\n- 🔤 Ngôn ngữ: ${repo.language || 'N/A'}\n- 🏷️ Topics: ${(repo.topics || []).join(', ') || 'N/A'}\n\n🔗 [Xem trên GitHub](${repo.html_url})`,
+      contentHash: '',
       sourceName: this.name,
       sourceUrl: repo.html_url,
       originalUrl: repo.html_url,

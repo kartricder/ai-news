@@ -1,8 +1,15 @@
+import Database from 'better-sqlite3';
 import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import path from 'path';
 
 async function main() {
+  const dbPath = path.resolve(__dirname, 'dev.db');
+  console.log('Connecting to database at:', dbPath);
+
+  const adapter = new PrismaBetterSqlite3({ url: dbPath });
+  const prisma = new PrismaClient({ adapter });
+
   console.log('Seeding database...');
 
   // Create default sources
@@ -24,6 +31,8 @@ async function main() {
     if (!existing) {
       await prisma.source.create({ data: source });
       console.log(`  Created source: ${source.name}`);
+    } else {
+      console.log(`  Skipped (exists): ${source.name}`);
     }
   }
 
@@ -44,17 +53,16 @@ async function main() {
     if (!existing) {
       await prisma.appSetting.create({ data: setting });
       console.log(`  Created setting: ${setting.key}`);
+    } else {
+      console.log(`  Skipped (exists): ${setting.key}`);
     }
   }
 
+  await prisma.$disconnect();
   console.log('Seed completed successfully!');
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
-import { CrawlRunStatus } from '@prisma/client';
+
+type CrawlRunStatus = 'running' | 'completed' | 'failed' | 'success';
 
 export async function startCrawlRun(): Promise<string> {
   const run = await prisma.crawlRun.create({

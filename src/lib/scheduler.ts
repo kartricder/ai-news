@@ -1,11 +1,11 @@
-import cron from 'node-cron';
+import cron, { type ScheduledTask } from 'node-cron';
 import { runAllCrawlers } from '@/crawlers';
 import { getSetting, setSetting } from '@/lib/settings';
 import { notifyNewArticles, postDailySummary, notifyError } from '@/lib/telegram';
 import { startCrawlRun, finishCrawlRun } from '@/lib/crawlRun';
 import { prisma } from '@/lib/prisma';
 
-let schedulerTask: cron.ScheduledTask | null = null;
+let schedulerTask: ScheduledTask | null = null;
 
 /**
  * Get all published articles from the last run.
@@ -29,6 +29,9 @@ async function getNewlyPublishedArticles() {
       score: a.importanceScore,
       summary: a.summaryVi,
     }));
+  } catch (error) {
+    console.error('[Scheduler] Error fetching new articles:', error);
+    return [];
   }
 }
 
@@ -73,8 +76,11 @@ export async function runScheduler(): Promise<void> {
       await setSetting('last_daily_summary', today);
     }
 
+    const totalFetched =
+      result.total.published + result.total.pending + result.total.rejected;
+
     await finishCrawlRun(crawlRunId, {
-      totalFetched: result.total.fetched,
+      totalFetched,
       totalPublished: result.total.published,
       totalRejected: result.total.rejected,
       totalPending: result.total.pending,

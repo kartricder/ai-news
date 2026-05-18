@@ -51,8 +51,10 @@ export class HackerNewsCrawler extends BaseSourceCrawler {
 
     return {
       title: item.title,
+      slug: `hn-${item.id}`,
       summaryVi: item.text ? item.text.substring(0, 300) : `Bài viết trên Hacker News bởi ${item.by}`,
       contentVi: item.text || '',
+      contentHash: '',
       sourceName: this.name,
       sourceUrl: `https://news.ycombinator.com/item?id=${item.id}`,
       originalUrl: item.url || `https://news.ycombinator.com/item?id=${item.id}`,

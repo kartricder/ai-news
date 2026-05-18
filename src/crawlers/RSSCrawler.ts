@@ -1,15 +1,22 @@
 import BaseSourceCrawler from './BaseSourceCrawler';
 import { ArticleData } from '@/types';
+import Parser from 'rss-parser';
 
-interface RSSItem {
+interface CustomFeed {
+  title?: string;
+  description?: string;
+  link?: string;
+}
+
+interface CustomItem {
   title?: string;
   link?: string;
-  description?: string;
-  content?: string;
-  contentSnippet?: string;
   guid?: string;
+  contentSnippet?: string;
+  content?: string;
+  'content:encoded'?: string;
   isoDate?: string;
-  pubDate?: Date;
+  pubDate?: string;
   creator?: string;
   categories?: string[];
 }
@@ -17,6 +24,8 @@ interface RSSItem {
 export class RSSCrawler extends BaseSourceCrawler {
   name = 'RSS Blogs';
   sourceType = 'rss';
+
+  private parser: Parser<CustomFeed, CustomItem>;
 
   private rssFeeds: string[] = [
     'https://openai.com/blog/rss.xml',
@@ -31,41 +40,56 @@ export class RSSCrawler extends BaseSourceCrawler {
     'https://deepmind.google/blog/rss.xml',
   ];
 
+  constructor() {
+    super();
+    this.parser = new Parser<CustomFeed, CustomItem>({
+      timeout: 15000,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (compatible; AI-News-Crawler/1.0; +https://github.com/ai-news)',
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+      },
+    });
+  }
+
   async fetch(): Promise<ArticleData[]> {
     const allItems: ArticleData[] = [];
 
     for (const feedUrl of this.rssFeeds) {
       try {
         const items = await this.fetchFeed(feedUrl);
+        const sourceName = this.extractSourceName(feedUrl);
+        if (items.length > 0) {
+          console.log(`[RSS] Fetched ${items.length} items from ${feedUrl} -> sourceName="${sourceName}"`);
+        }
         allItems.push(...items);
       } catch (err) {
-        console.error(`[RSS] Error fetching ${feedUrl}:`, err);
+        console.error(`[RSS] Error fetching ${feedUrl}:`, (err as Error).message);
       }
     }
 
+    console.log(`[RSS] Total items fetched: ${allItems.length}`);
     return allItems;
   }
 
   private async fetchFeed(feedUrl: string): Promise<ArticleData[]> {
-    // Use rss2json for parsing RSS (free tier)
-    const response = await fetch(
-      `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}&api_key=wt1sr4hrhp7iuqy7ynmcmvxysdks7xwjqy1a3pks`
-    );
+    const feed = await this.parser.parseURL(feedUrl);
 
-    if (!response.ok) {
-      console.warn(`[RSS] Failed to fetch ${feedUrl}: ${response.status}`);
+    if (!feed.items || feed.items.length === 0) {
       return [];
     }
 
-    const data = await response.json();
-    if (data.status !== 'ok' || !data.items) return [];
+    const sourceName = this.extractSourceName(feedUrl);
 
-    return data.items
-      .filter((item: RSSItem) => item.title)
-      .map((item: RSSItem) => this.convertToArticle(item, feedUrl));
+    // Log source name once per subreddit (not per article)
+    console.log(`[RSS] Feed "${feed.title || feedUrl}" => sourceName="${sourceName}"`);
+
+    return feed.items
+      .filter((item) => item.title)
+      .map((item) => this.convertToArticle(item, feedUrl));
   }
 
-  private convertToArticle(item: RSSItem, feedUrl: string): ArticleData {
+  private convertToArticle(item: CustomItem, feedUrl: string): ArticleData {
     const sourceName = this.extractSourceName(feedUrl);
     const tags = ['RSS', sourceName.replace(/\s+/g, '-').toLowerCase()];
 
@@ -74,10 +98,15 @@ export class RSSCrawler extends BaseSourceCrawler {
     if (/breakthrough|achievement|first|world record/i.test(item.title || '')) category = 'breakthrough';
     if (/agent|tool|product|app|platform/i.test(item.title || '')) category = 'tool-release';
 
+    const rawContent = item.content || item['content:encoded'] || '';
+    const snippet = item.contentSnippet || rawContent.replace(/<[^>]*>/g, '').substring(0, 300) || '';
+
     return {
       title: item.title || '',
-      summaryVi: item.contentSnippet?.substring(0, 300) || item.description?.substring(0, 300) || '',
-      contentVi: item.content || item.description || '',
+      slug: `${sourceName.toLowerCase().replace(/\s+/g, '-')}-${(item.guid || item.link || Math.random().toString(36)).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 50)}`,
+      summaryVi: snippet.substring(0, 300),
+      contentVi: rawContent,
+      contentHash: '',
       sourceName,
       sourceUrl: feedUrl,
       originalUrl: item.link || '',
@@ -93,16 +122,18 @@ export class RSSCrawler extends BaseSourceCrawler {
 
   private extractSourceName(feedUrl: string): string {
     const nameMap: Record<string, string> = {
-      'openai.com': 'OpenAI',
-      'anthropic.com': 'Anthropic',
-      'blog.google': 'Google AI',
-      'ai.meta.com': 'Meta AI',
+      'openai.com': 'OpenAI Blog',
+      'anthropic.com': 'Anthropic Blog',
+      'blog.google': 'Google AI Blog',
+      'ai.meta.com': 'Meta AI Blog',
+      'deepmind.google': 'DeepMind Blog',
+      // Non-DB sources — these names will NOT match any DB source,
+      // so saveToDatabase() will correctly skip them.
       'vinta.com.br': 'Vinta',
       'huyenchip.com': 'Chip Huyen',
       'lilianweng.github.io': 'Lilian Weng',
       'stability.ai': 'Stability AI',
       'mistral.ai': 'Mistral AI',
-      'deepmind.google': 'Google DeepMind',
     };
 
     for (const [domain, name] of Object.entries(nameMap)) {

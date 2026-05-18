@@ -12,6 +12,7 @@ export interface ArticleData {
   importanceScore: number;
   reasonForScore: string;
   contentHash: string;
+  slug: string;
   status: 'draft' | 'pending' | 'published' | 'rejected';
 }
 
@@ -51,4 +52,14 @@ export interface AnalyticsStats {
   topSources: { name: string; count: number }[];
   scoreDistribution: { range: string; count: number }[];
   articlesByDay: { day: string; count: number }[];
+}
+
+export interface ArticleSummary {
+  slug: string;
+  title: string;
+  summaryVi: string;
+  sourceName: string;
+  category: string;
+  importanceScore: number;
+  createdAt: string;
 }
