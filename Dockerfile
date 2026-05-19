@@ -51,9 +51,9 @@ RUN npm run build
 FROM node:24-bookworm-slim AS runner
 WORKDIR /app
 
-# Install OpenSSL for Prisma
+# Install OpenSSL for Prisma and gosu for user switching
 RUN apt-get update -y && \
-    apt-get install -y openssl && \
+    apt-get install -y openssl gosu && \
     rm -rf /var/lib/apt/lists/*
 
 # Set production environment
@@ -80,8 +80,10 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 RUN mkdir -p /app/prisma /app/logs && \
     chown -R nextjs:nodejs /app
 
-# Switch to non-root user
-USER nextjs
+# Start as root to allow entrypoint to fix mounted volume permissions
+# Entrypoint will switch to nextjs user after fixing permissions
+# USER nextjs
+# Note: Running as root for entrypoint, will switch to nextjs in entrypoint script
 
 # Expose port
 EXPOSE 3000
