@@ -14,156 +14,104 @@ interface ArticlesResponse {
   };
 }
 
-async function getPublishedArticles(
-  page: number = 1,
-  pageSize: number = 12
-): Promise<ArticlesResponse> {
+async function getPublishedArticles(params: { page: number; search?: string; category?: string }): Promise<ArticlesResponse> {
   const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
   const url = new URL('/api/articles', baseUrl);
   url.searchParams.set('status', 'published');
   url.searchParams.set('sortBy', 'importanceScore');
   url.searchParams.set('sortOrder', 'desc');
-  url.searchParams.set('page', String(page));
-  url.searchParams.set('pageSize', String(pageSize));
+  url.searchParams.set('page', String(params.page));
+  url.searchParams.set('pageSize', '12');
+  if (params.search) url.searchParams.set('search', params.search);
+  if (params.category) url.searchParams.set('category', params.category);
 
   const res = await fetch(url.toString(), { cache: 'no-store' });
-
-  if (!res.ok) {
-    throw new Error('Failed to fetch articles');
-  }
-
+  if (!res.ok) throw new Error('Failed to fetch articles');
   return res.json();
 }
 
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; search?: string; category?: string }>;
 }) {
   const params = await searchParams;
   const currentPage = Math.max(1, parseInt(params.page || '1', 10));
-  let articles: ArticlesResponse['data'] = [];
-  let pagination: ArticlesResponse['pagination'] = {
-    page: 1,
-    pageSize: 12,
-    total: 0,
-    totalPages: 0,
-    hasNext: false,
-    hasPrev: false,
+  const search = params.search?.trim() || '';
+  const category = params.category?.trim() || '';
+
+  let response: ArticlesResponse = {
+    data: [],
+    pagination: { page: 1, pageSize: 12, total: 0, totalPages: 0, hasNext: false, hasPrev: false },
   };
 
   try {
-    const response = await getPublishedArticles(currentPage, 12);
-    articles = response.data;
-    pagination = response.pagination;
+    response = await getPublishedArticles({ page: currentPage, search, category });
   } catch {
-    // API not ready or no data — show empty state
+    response.data = [];
   }
 
-  // Build page numbers for navigation
-  const buildPages = () => {
-    if (pagination.totalPages <= 1) return [];
-    const pages: (number | '...')[] = [];
-    const delta = 2;
-    for (let i = 1; i <= pagination.totalPages; i++) {
-      if (
-        i === 1 ||
-        i === pagination.totalPages ||
-        (i >= currentPage - delta && i <= currentPage + delta)
-      ) {
-        pages.push(i);
-      } else if (pages[pages.length - 1] !== '...') {
-        pages.push('...');
-      }
-    }
-    return pages;
-  };
-
-  const pageNumbers = buildPages();
-
   return (
-    <div className="flex flex-col gap-6">
-      {/* Hero / Header */}
-      <section className="py-8 md:py-12">
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-          Tin tức AI
-        </h1>
-        <p className="mt-2 text-lg text-[var(--foreground)]/60">
-          Tổng hợp tin tức công nghệ trí tuệ nhân tạo mới nhất
-        </p>
+    <div className="flex flex-col gap-8 py-8">
+      <section className="border-b border-slate-200 pb-8">
+        <div className="max-w-3xl">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-5xl">
+            Tin tức AI đáng đọc hôm nay
+          </h1>
+          <p className="mt-3 text-base leading-7 text-slate-600 md:text-lg">
+            Crawler tự động tổng hợp, chấm điểm và xuất bản các tin AI quan trọng từ blog, Hacker News, Reddit và GitHub.
+          </p>
+        </div>
       </section>
 
-      {/* Articles Grid */}
-      {articles.length > 0 ? (
+      <form className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_220px_auto]">
+        <input
+          name="search"
+          defaultValue={search}
+          placeholder="Tìm theo tiêu đề, nguồn, tóm tắt"
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500"
+        />
+        <input
+          name="category"
+          defaultValue={category}
+          placeholder="Lọc category"
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500"
+        />
+        <button className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+          Lọc tin
+        </button>
+      </form>
+
+      {response.data.length > 0 ? (
         <>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {articles.map((article) => (
+            {response.data.map((article) => (
               <ArticleCard key={article.slug} article={article} />
             ))}
           </div>
 
-          {/* Pagination */}
-          {pageNumbers.length > 0 && (
-            <div className="flex items-center justify-center gap-1 py-4">
-              {currentPage > 1 && (
-                <Link
-                  href={`/?page=${currentPage - 1}`}
-                  className="rounded-lg px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-                >
-                  ‹ Trước
+          {response.pagination.totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4 text-sm">
+              {response.pagination.hasPrev && (
+                <Link className="rounded-md border border-slate-200 px-3 py-2" href={`/?page=${currentPage - 1}&search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}`}>
+                  Trước
                 </Link>
               )}
-
-              {pageNumbers.map((p, i) =>
-                p === '...' ? (
-                  <span key={`ellipsis-${i}`} className="px-2 text-zinc-600">
-                    ...
-                  </span>
-                ) : (
-                  <Link
-                    key={p}
-                    href={`/?page=${p}`}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      p === currentPage
-                        ? 'bg-cyan-500/15 text-cyan-400'
-                        : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
-                    }`}
-                  >
-                    {p}
-                  </Link>
-                )
-              )}
-
-              {currentPage < pagination.totalPages && (
-                <Link
-                  href={`/?page=${currentPage + 1}`}
-                  className="rounded-lg px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-                >
-                  Sau ›
+              <span className="text-slate-500">
+                Trang {currentPage}/{response.pagination.totalPages}
+              </span>
+              {response.pagination.hasNext && (
+                <Link className="rounded-md border border-slate-200 px-3 py-2" href={`/?page=${currentPage + 1}&search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}`}>
+                  Sau
                 </Link>
               )}
             </div>
           )}
         </>
       ) : (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <svg
-            className="mb-4 h-16 w-16 text-[var(--foreground)]/20"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-            />
-          </svg>
-          <p className="text-lg font-medium">Chưa có bài viết nào</p>
-          <p className="mt-1 text-sm text-[var(--foreground)]/50">
-            Các bài viết sẽ được hiển thị ở đây sau khi được xuất bản.
-          </p>
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+          <p className="text-lg font-semibold text-slate-800">Chưa có bài published phù hợp.</p>
+          <p className="mt-2 text-sm text-slate-500">Chạy crawler hoặc bỏ bộ lọc để xem thêm nội dung.</p>
         </div>
       )}
     </div>

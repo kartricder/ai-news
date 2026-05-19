@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAdminApi } from '@/lib/authGuard';
+
+const allowedStatuses = new Set(['draft', 'pending', 'published', 'rejected']);
 
 export async function GET(
   _request: NextRequest,
@@ -7,25 +10,19 @@ export async function GET(
 ) {
   try {
     const { id: segments } = await params;
-
     if (!segments || segments.length === 0) {
       return NextResponse.json({ error: 'Missing article identifier' }, { status: 400 });
     }
 
     const identifier = segments[0];
-
-    // Find by slug or by id
     const article = await prisma.article.findFirst({
-      where: {
-        OR: [{ slug: identifier }, { id: identifier }],
-      },
+      where: { OR: [{ slug: identifier }, { id: identifier }] },
     });
 
     if (!article) {
       return NextResponse.json({ error: 'Article not found' }, { status: 404 });
     }
 
-    // Check permission: only published articles are publicly viewable
     const isPublicView = segments.length === 1 || segments[1] !== 'admin';
     if (isPublicView && article.status !== 'published') {
       return NextResponse.json({ error: 'Article not found' }, { status: 404 });
@@ -34,10 +31,7 @@ export async function GET(
     return NextResponse.json({ data: article });
   } catch (error) {
     console.error('GET /api/articles/[slug] error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -45,6 +39,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string[] }> }
 ) {
+  const unauthorized = requireAdminApi(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { id: segments } = await params;
     if (!segments || segments.length === 0) {
@@ -53,6 +50,9 @@ export async function PATCH(
 
     const identifier = segments[0];
     const body = await request.json();
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
 
     const article = await prisma.article.findFirst({
       where: { OR: [{ slug: identifier }, { id: identifier }] },
@@ -62,14 +62,42 @@ export async function PATCH(
       return NextResponse.json({ error: 'Article not found' }, { status: 404 });
     }
 
-    // Allowed fields for update
-    const allowedFields = ['status', 'summaryVi', 'contentVi', 'category', 'tags', 'importanceScore', 'reasonForScore'];
-    const updateData: Record<string, unknown> = {};
+    const updateData: {
+      status?: string;
+      summaryVi?: string;
+      contentVi?: string;
+      category?: string;
+      tags?: string;
+      importanceScore?: number;
+      reasonForScore?: string;
+      publishedAt?: Date;
+    } = {};
 
-    for (const field of allowedFields) {
-      if (field in body) {
-        updateData[field] = body[field];
+    if ('status' in body) {
+      if (typeof body.status !== 'string' || !allowedStatuses.has(body.status)) {
+        return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
       }
+      updateData.status = body.status;
+      if (body.status === 'published' && !article.publishedAt) {
+        updateData.publishedAt = new Date();
+      }
+    }
+
+    for (const field of ['summaryVi', 'contentVi', 'category', 'tags', 'reasonForScore'] as const) {
+      if (field in body) {
+        if (typeof body[field] !== 'string') {
+          return NextResponse.json({ error: `Invalid ${field}` }, { status: 400 });
+        }
+        updateData[field] = body[field].trim();
+      }
+    }
+
+    if ('importanceScore' in body) {
+      const score = Number(body.importanceScore);
+      if (!Number.isInteger(score) || score < 0 || score > 100) {
+        return NextResponse.json({ error: 'Invalid importanceScore' }, { status: 400 });
+      }
+      updateData.importanceScore = score;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -84,9 +112,6 @@ export async function PATCH(
     return NextResponse.json({ data: updated });
   } catch (error) {
     console.error('PATCH /api/articles/[slug] error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

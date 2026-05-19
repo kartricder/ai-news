@@ -35,6 +35,9 @@ model Article {
   @@index([status])
   @@index([importanceScore])
   @@index([sourceName])
+  @@index([sourceUrl])
+  @@index([originalUrl])
+  @@index([contentHash])
   @@index([createdAt])
   @@index([slug])
 }

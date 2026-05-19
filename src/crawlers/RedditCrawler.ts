@@ -1,5 +1,6 @@
 import BaseSourceCrawler from './BaseSourceCrawler';
 import { ArticleData } from '@/types';
+import { prisma } from '@/lib/prisma';
 
 interface RedditPost {
   data: {
@@ -38,13 +39,20 @@ export class RedditCrawler extends BaseSourceCrawler {
 
   async fetch(): Promise<ArticleData[]> {
     const allPosts: Array<{ subreddit: string; post: RedditPost['data'] }> = [];
+    const enabledSources = await prisma.source.findMany({
+      where: { type: 'reddit', enabled: true },
+    });
+    const enabledSubreddits = enabledSources
+      .map((source) => source.url.match(/\/r\/([^/]+)/i)?.[1] || source.name.match(/r\/(.+)$/i)?.[1])
+      .filter((name): name is string => Boolean(name));
 
-    for (const subreddit of SUBREDDITS) {
+    for (const subreddit of SUBREDDITS.filter((name) => enabledSubreddits.includes(name))) {
       try {
         const response = await fetch(
           `https://www.reddit.com/r/${subreddit}/hot.json?limit=15`,
           {
             headers: { 'User-Agent': 'AI-News-Aggregator/1.0' },
+            signal: AbortSignal.timeout(10000),
           }
         );
         const data: RedditResponse = await response.json();

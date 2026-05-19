@@ -1,5 +1,6 @@
 import BaseSourceCrawler from './BaseSourceCrawler';
 import { ArticleData } from '@/types';
+import { prisma } from '@/lib/prisma';
 
 // Hacker News API response types
 interface HNItem {
@@ -19,7 +20,12 @@ export class HackerNewsCrawler extends BaseSourceCrawler {
   sourceType = 'hackernews';
 
   async fetch(): Promise<ArticleData[]> {
-    const response = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json');
+    const source = await prisma.source.findUnique({ where: { name: this.name } });
+    if (!source?.enabled) return [];
+
+    const response = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json', {
+      signal: AbortSignal.timeout(10000),
+    });
     const ids: number[] = await response.json();
     const topIds = ids.slice(0, 30); // Get top 30
 
@@ -29,7 +35,9 @@ export class HackerNewsCrawler extends BaseSourceCrawler {
     for (let i = 0; i < topIds.length; i += batchSize) {
       const batch = topIds.slice(i, i + batchSize);
       const promises = batch.map(id =>
-        fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`).then(r => r.json())
+        fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, {
+          signal: AbortSignal.timeout(10000),
+        }).then(r => r.json())
       );
       const results = await Promise.all(promises);
       items.push(...results.filter(r => r && r.type === 'story'));

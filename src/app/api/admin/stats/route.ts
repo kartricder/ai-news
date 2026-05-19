@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { NextRequest } from 'next/server';
+import { requireAdminApi } from '@/lib/authGuard';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const unauthorized = requireAdminApi(request);
+  if (unauthorized) return unauthorized;
+
   try {
     // Run all aggregations in parallel
     const [
@@ -56,10 +61,11 @@ export async function GET() {
 
     // Score distribution: count articles in score ranges
     const scoreRanges = [
-      { label: '0-2', min: 0, max: 2 },
-      { label: '3-5', min: 3, max: 5 },
-      { label: '6-8', min: 6, max: 8 },
-      { label: '9-10', min: 9, max: 10 },
+      { label: '0-20', min: 0, max: 20 },
+      { label: '21-40', min: 21, max: 40 },
+      { label: '41-60', min: 41, max: 60 },
+      { label: '61-80', min: 61, max: 80 },
+      { label: '81-100', min: 81, max: 100 },
     ];
 
     const scoreDistribution = await Promise.all(

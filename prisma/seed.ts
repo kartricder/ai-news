@@ -1,7 +1,7 @@
-import Database from 'better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import path from 'path';
+import { hashPassword } from '../src/lib/auth';
 
 async function main() {
   const dbPath = path.resolve(__dirname, 'dev.db');
@@ -37,15 +37,16 @@ async function main() {
   }
 
   // Create default app settings
+  const adminPassword = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === 'production' ? '' : 'admin123');
   const settings = [
     { key: 'publish_threshold', value: '75', encrypted: false },
     { key: 'pending_threshold', value: '60', encrypted: false },
-    { key: 'cron_schedule', value: '0 6 * * *', encrypted: false },
-    { key: 'admin_username', value: 'admin', encrypted: false },
-    { key: 'admin_password_hashed', value: '', encrypted: true },
+    { key: 'cron_schedule', value: process.env.CRON_SCHEDULE || '0 6 * * *', encrypted: false },
+    { key: 'app_base_url', value: process.env.APP_BASE_URL || 'http://localhost:3000', encrypted: false },
+    { key: 'admin_username', value: process.env.ADMIN_USERNAME || 'admin', encrypted: false },
+    { key: 'admin_password_hashed', value: adminPassword ? await hashPassword(adminPassword) : '', encrypted: true },
     { key: 'telegram_bot_token', value: '', encrypted: true },
     { key: 'telegram_chat_id', value: '', encrypted: true },
-    { key: 'encryption_key', value: '', encrypted: true },
   ];
 
   for (const setting of settings) {
@@ -53,6 +54,12 @@ async function main() {
     if (!existing) {
       await prisma.appSetting.create({ data: setting });
       console.log(`  Created setting: ${setting.key}`);
+    } else if (setting.key === 'admin_password_hashed' && !existing.value && setting.value) {
+      await prisma.appSetting.update({
+        where: { key: setting.key },
+        data: { value: setting.value, encrypted: true },
+      });
+      console.log(`  Updated empty setting: ${setting.key}`);
     } else {
       console.log(`  Skipped (exists): ${setting.key}`);
     }

@@ -1,5 +1,6 @@
 import BaseSourceCrawler from './BaseSourceCrawler';
 import { ArticleData } from '@/types';
+import { prisma } from '@/lib/prisma';
 
 interface GHRepo {
   id: number;
@@ -20,6 +21,9 @@ export class GitHubTrendingCrawler extends BaseSourceCrawler {
   sourceType = 'github';
 
   async fetch(): Promise<ArticleData[]> {
+    const source = await prisma.source.findUnique({ where: { name: this.name } });
+    if (!source?.enabled) return [];
+
     // Fetch trending repos from GitHub API (last week, AI/ML related)
     const repos: GHRepo[] = await this.fetchTrendingRepos();
     const aiRepos = repos.filter(repo => this.isAIRepo(repo));
@@ -44,7 +48,9 @@ export class GitHubTrendingCrawler extends BaseSourceCrawler {
           headers: {
             Accept: 'application/vnd.github.v3+json',
             'User-Agent': 'AI-News-Aggregator/1.0',
+            ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
           },
+          signal: AbortSignal.timeout(10000),
         }
       );
 
@@ -52,7 +58,7 @@ export class GitHubTrendingCrawler extends BaseSourceCrawler {
         const data = await response.json();
         return data.items || [];
       }
-    } catch (err) {
+    } catch {
       console.error('[GitHub] Search API failed, trying alternative...');
     }
 
@@ -64,7 +70,9 @@ export class GitHubTrendingCrawler extends BaseSourceCrawler {
           headers: {
             Accept: 'application/vnd.github.v3+json',
             'User-Agent': 'AI-News-Aggregator/1.0',
+            ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
           },
+          signal: AbortSignal.timeout(10000),
         }
       );
       if (response.ok) {

@@ -1,40 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthCookieOptions, AUTH_COOKIE_NAME, validateAdminCredentials } from '@/lib/auth';
+import { signToken } from '@/lib/jwt';
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, password } = await request.json();
+    const body = await request.json();
+    const username = typeof body?.username === 'string' ? body.username.trim() : '';
+    const password = typeof body?.password === 'string' ? body.password : '';
 
     if (!username || !password) {
-      return NextResponse.json(
-        { error: 'Username and password are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
     }
 
-    const adminUser = process.env.ADMIN_USERNAME || 'admin';
-    const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
-
-    if (username !== adminUser || password !== adminPass) {
-      return NextResponse.json(
-        { error: 'Invalid credentials' },
-        { status: 401 }
-      );
+    const valid = await validateAdminCredentials(username, password);
+    if (!valid) {
+      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    // Simple token-based auth (for demo purposes)
-    const token = Buffer.from(`${username}:${Date.now()}`).toString('base64');
-
-    return NextResponse.json({
-      data: {
-        token,
-        username,
-      },
-    });
+    const token = signToken({ username, role: 'admin' });
+    const response = NextResponse.json({ data: { username } });
+    response.cookies.set(AUTH_COOKIE_NAME, token, getAuthCookieOptions());
+    return response;
   } catch (error) {
     console.error('POST /api/admin/login error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 /**
  * Run all crawlers and save articles to the database.
- * Usage: npx tsx scripts/run-crawl.ts
+ * Usage: npm run crawl
  */
 
 import 'dotenv/config';
@@ -16,10 +16,16 @@ async function main() {
   const rejected = await prisma.article.count({ where: { status: 'rejected' } });
 
   console.log('\n=== Crawl summary ===');
-  console.log(`This run  → published: ${result.total.published}, pending: ${result.total.pending}, rejected: ${result.total.rejected}`);
-  console.log(`In DB now → published: ${published}, pending: ${pending}, rejected: ${rejected}`);
+  console.log(`Run ID: ${result.runId}`);
+  console.log(`This run -> fetched: ${result.total.fetched}, published: ${result.total.published}, pending: ${result.total.pending}, rejected: ${result.total.rejected}, duplicates: ${result.total.duplicates}`);
+  if (result.total.errors.length > 0) {
+    console.log(`Errors: ${result.total.errors.length}`);
+    for (const error of result.total.errors) console.log(`- ${error}`);
+  }
+  console.log(`In DB now -> published: ${published}, pending: ${pending}, rejected: ${rejected}`);
 
   await prisma.$disconnect();
+  process.exit(0);
 }
 
 main().catch(async (err) => {

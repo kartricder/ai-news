@@ -1,7 +1,5 @@
 import { prisma } from '@/lib/prisma';
 
-type CrawlRunStatus = 'running' | 'completed' | 'failed' | 'success';
-
 export async function startCrawlRun(): Promise<string> {
   const run = await prisma.crawlRun.create({
     data: {
@@ -31,7 +29,7 @@ export async function finishCrawlRun(
     data: {
       ...stats,
       finishedAt: new Date(),
-      status: stats.errorMessage ? 'failed' : 'success',
+      status: stats.errorMessage ? 'completed_with_errors' : 'completed',
       errorMessage: stats.errorMessage,
     },
   });

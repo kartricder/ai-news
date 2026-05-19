@@ -1,5 +1,3 @@
-import type { ScoredArticle } from './crawlers';
-
 export interface ArticleImportance {
   score: number;
   reason: string;

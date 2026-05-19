@@ -1,58 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { getSetting, setSetting } from '@/lib/settings';
+import { requireAdminApi } from '@/lib/authGuard';
 
-export async function GET() {
+function maskSecret(value: string | null) {
+  if (!value) return '';
+  if (value.length <= 8) return '********';
+  return `${value.slice(0, 4)}********${value.slice(-4)}`;
+}
+
+export async function GET(request: NextRequest) {
+  const unauthorized = requireAdminApi(request);
+  if (unauthorized) return unauthorized;
+
   try {
-    const token = await prisma.appSetting.findUnique({ where: { key: 'telegram_bot_token' } });
-    const chatId = await prisma.appSetting.findUnique({ where: { key: 'telegram_chat_id' } });
+    const token = await getSetting('telegram_bot_token');
+    const chatId = await getSetting('telegram_chat_id');
 
     return NextResponse.json({
       data: {
-        telegram_bot_token: token ? '***' : '',
-        telegram_chat_id: chatId ? chatId.value : '',
-        configured: !!(token && chatId && token.value && chatId.value),
+        telegram_bot_token: maskSecret(token),
+        telegram_chat_id: chatId || '',
+        configured: Boolean(token && chatId),
       },
     });
   } catch (error) {
     console.error('GET /api/telegram/config error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function PUT(request: NextRequest) {
+  const unauthorized = requireAdminApi(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json();
-
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    // Update Telegram config in AppSettings
     if ('telegram_bot_token' in body) {
-      await prisma.appSetting.upsert({
-        where: { key: 'telegram_bot_token' },
-        update: { value: String(body.telegram_bot_token) },
-        create: { key: 'telegram_bot_token', value: String(body.telegram_bot_token) },
-      });
+      if (typeof body.telegram_bot_token !== 'string') {
+        return NextResponse.json({ error: 'Invalid telegram_bot_token' }, { status: 400 });
+      }
+      const token = body.telegram_bot_token.trim();
+      if (token && !token.includes('*')) {
+        await setSetting('telegram_bot_token', token, true);
+      }
+      if (!token) {
+        await setSetting('telegram_bot_token', '', true);
+      }
     }
 
     if ('telegram_chat_id' in body) {
-      await prisma.appSetting.upsert({
-        where: { key: 'telegram_chat_id' },
-        update: { value: String(body.telegram_chat_id) },
-        create: { key: 'telegram_chat_id', value: String(body.telegram_chat_id) },
-      });
+      if (typeof body.telegram_chat_id !== 'string') {
+        return NextResponse.json({ error: 'Invalid telegram_chat_id' }, { status: 400 });
+      }
+      await setSetting('telegram_chat_id', body.telegram_chat_id.trim(), true);
     }
 
     return NextResponse.json({ data: { success: true } });
   } catch (error) {
     console.error('PUT /api/telegram/config error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

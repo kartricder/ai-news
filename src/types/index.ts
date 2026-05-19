@@ -29,6 +29,7 @@ export interface AppSettings {
   admin_username: string;
   telegram_bot_token: string;
   telegram_chat_id: string;
+  app_base_url: string;
 }
 
 export interface AnalyticsStats {
@@ -59,6 +60,12 @@ export interface ArticleSummary {
   title: string;
   summaryVi: string;
   sourceName: string;
+  sourceUrl?: string;
+  originalUrl?: string;
+  status?: string;
+  reasonForScore?: string;
+  tags?: string;
+  publishedAt?: string | null;
   category: string;
   importanceScore: number;
   createdAt: string;

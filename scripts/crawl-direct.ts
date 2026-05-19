@@ -73,8 +73,8 @@ async function main() {
         );
       }
       console.log(`  Summary: ${matched} matched, ${unmatched} unmatched`);
-    } catch (err: any) {
-      console.error(`  ❌ Error crawling ${name}:`, err?.message || err);
+    } catch (err) {
+      console.error(`  ❌ Error crawling ${name}:`, err instanceof Error ? err.message : String(err));
     }
   }
 
