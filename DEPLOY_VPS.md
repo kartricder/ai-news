@@ -328,6 +328,39 @@ docker-compose exec ai-news sh
 
 ## Deploy không có tên miền (chỉ IP)
 
+### ⚠️ QUAN TRỌNG: Cấu hình cookie cho HTTP
+
+**Khi deploy lên VPS chỉ dùng HTTP (không có SSL/HTTPS), bạn PHẢI set biến môi trường sau:**
+
+```env
+FORCE_HTTP="true"
+```
+
+**Lý do:** 
+- Trong production, Next.js mặc định yêu cầu HTTPS cho cookies (`secure: true`)
+- Browser **từ chối** set cookie qua HTTP khi có flag `secure`  
+- Kết quả: **Đăng nhập thành công nhưng không redirect** vì cookie không được lưu
+
+**Cách fix:**
+1. Thêm `FORCE_HTTP="true"` vào file `.env`
+2. Rebuild Docker hoặc restart PM2
+
+```bash
+# Docker
+docker-compose down
+docker-compose up -d --build
+
+# PM2
+pm2 restart ai-news
+```
+
+**Lưu ý bảo mật:** 
+- `FORCE_HTTP="true"` chỉ dùng khi THỰC SỰ không có HTTPS
+- Khi đã có domain + SSL, đổi về `FORCE_HTTP="false"`
+- Cookies qua HTTP có thể bị đánh cắp bởi man-in-the-middle attacks
+
+---
+
 ### Tình huống
 
 Bạn có VPS với IP public (ví dụ: `123.45.67.89`) nhưng **chưa có tên miền**.

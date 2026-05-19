@@ -27,10 +27,15 @@ export function isDefaultAdminPassword(password: string | undefined): boolean {
 }
 
 export function getAuthCookieOptions() {
+  // Allow HTTP in production when FORCE_HTTP=true (for VPS without domain/SSL)
+  const isSecure = process.env.FORCE_HTTP === 'true' 
+    ? false 
+    : process.env.NODE_ENV === 'production';
+    
   return {
     httpOnly: true,
     sameSite: 'lax' as const,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecure,
     path: '/',
     maxAge: 24 * 60 * 60,
   };
