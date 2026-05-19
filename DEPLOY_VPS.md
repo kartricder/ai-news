@@ -40,13 +40,22 @@ cp .env.example .env
 Sửa `.env` production:
 
 ```bash
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="file:./prisma/dev.db"
 APP_BASE_URL="https://your-domain.com"
 ADMIN_USERNAME="admin"
 ADMIN_PASSWORD="set-a-strong-password"
 ENCRYPTION_KEY="generate-a-long-random-secret"
 GITHUB_TOKEN=""
 CRON_SCHEDULE="0 6 * * *"
+OPENROUTER_API_KEY=""
+OPENROUTER_MODEL="openrouter/auto"
+OPENROUTER_FALLBACK_MODEL="google/gemini-2.5-flash"
+OPENROUTER_SECOND_FALLBACK_MODEL="mistralai/mistral-small-3.2-24b-instruct"
+AI_TRANSLATION_ENABLED=true
+AI_IMPORTANCE_REASON_ENABLED=true
+MAX_PUBLISH_PER_CRAWL=10
+MIN_SCORE_TO_PUBLISH=75
+CRON_SECRET="$(openssl rand -base64 32)"
 ```
 
 Không dùng `admin123` ở production.
@@ -121,7 +130,7 @@ crontab -e
 Thêm:
 
 ```cron
-0 6 * * * cd /path/to/ai-news && /usr/bin/npm run crawl >> logs/crawl.log 2>&1
+0 6 * * * cd /path/to/ai-news && /usr/bin/npm run cron:crawl >> logs/cron-crawl.log 2>&1
 ```
 
 Tạo thư mục log:
@@ -191,22 +200,40 @@ cp .env.example .env
 
 **Với tên miền:**
 ```env
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="file:./prisma/dev.db"
 APP_BASE_URL="https://your-domain.com"
 ADMIN_USERNAME="admin"
 ADMIN_PASSWORD="YourStrongPassword123!"
 ENCRYPTION_KEY="$(openssl rand -base64 32)"
 GITHUB_TOKEN=""
+OPENROUTER_API_KEY=""
+OPENROUTER_MODEL="openrouter/auto"
+OPENROUTER_FALLBACK_MODEL="google/gemini-2.5-flash"
+OPENROUTER_SECOND_FALLBACK_MODEL="mistralai/mistral-small-3.2-24b-instruct"
+AI_TRANSLATION_ENABLED=true
+AI_IMPORTANCE_REASON_ENABLED=true
+MAX_PUBLISH_PER_CRAWL=10
+MIN_SCORE_TO_PUBLISH=75
+CRON_SECRET="$(openssl rand -base64 32)"
 ```
 
 **Không có tên miền (dùng IP):**
 ```env
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="file:./prisma/dev.db"
 APP_BASE_URL="http://YOUR_VPS_IP:3000"
 ADMIN_USERNAME="admin"
 ADMIN_PASSWORD="YourStrongPassword123!"
 ENCRYPTION_KEY="$(openssl rand -base64 32)"
 GITHUB_TOKEN=""
+OPENROUTER_API_KEY=""
+OPENROUTER_MODEL="openrouter/auto"
+OPENROUTER_FALLBACK_MODEL="google/gemini-2.5-flash"
+OPENROUTER_SECOND_FALLBACK_MODEL="mistralai/mistral-small-3.2-24b-instruct"
+AI_TRANSLATION_ENABLED=true
+AI_IMPORTANCE_REASON_ENABLED=true
+MAX_PUBLISH_PER_CRAWL=10
+MIN_SCORE_TO_PUBLISH=75
+CRON_SECRET="$(openssl rand -base64 32)"
 ```
 
 ### 4. Build và chạy
@@ -297,7 +324,7 @@ crontab -e
 
 Thêm:
 ```cron
-0 6 * * * cd /home/user/ai-news && docker-compose exec -T ai-news npm run crawl >> logs/crawl.log 2>&1
+0 6 * * * cd /home/user/ai-news && docker-compose exec -T ai-news npm run cron:crawl >> logs/cron-crawl.log 2>&1
 ```
 
 ### 8. Docker commands hữu ích

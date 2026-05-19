@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import ArticleCard from '@/components/ArticleCard';
 import type { ArticleSummary } from '@/types';
+import { prisma } from '@/lib/prisma';
 
 interface ArticlesResponse {
   data: ArticleSummary[];
@@ -50,6 +51,12 @@ export default async function HomePage({
   } catch {
     response.data = [];
   }
+
+  const repoRadar = await prisma.repoRadarItem.findMany({
+    where: { status: { in: ['tracked', 'published'] } },
+    orderBy: [{ repoScore: 'desc' }, { stars: 'desc' }],
+    take: 6,
+  }).catch(() => []);
 
   return (
     <div className="flex flex-col gap-8 py-8">
@@ -113,6 +120,32 @@ export default async function HomePage({
           <p className="text-lg font-semibold text-slate-800">Chưa có bài published phù hợp.</p>
           <p className="mt-2 text-sm text-slate-500">Chạy crawler hoặc bỏ bộ lọc để xem thêm nội dung.</p>
         </div>
+      )}
+
+      {repoRadar.length > 0 && (
+        <section className="border-t border-slate-200 pt-8">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-bold text-slate-950">Repo Radar</h2>
+            <span className="text-sm text-slate-500">GitHub AI repos dang noi bat</span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {repoRadar.map((repo) => (
+              <a key={repo.id} href={repo.url} target="_blank" rel="noreferrer" className="block rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:border-sky-300">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-semibold text-slate-950">{repo.fullName}</h3>
+                  <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">{repo.repoScore}</span>
+                </div>
+                <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{repo.aiSummaryVi || repo.description || 'Chua du thong tin mo ta.'}</p>
+                {repo.whyImportant && <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-700">{repo.whyImportant}</p>}
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span>{repo.stars.toLocaleString()} stars</span>
+                  <span>{repo.forks.toLocaleString()} forks</span>
+                  {repo.language && <span>{repo.language}</span>}
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

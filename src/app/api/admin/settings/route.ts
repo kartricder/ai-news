@@ -3,7 +3,21 @@ import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/authGuard';
 import { setSetting } from '@/lib/settings';
 
-const editableSettings = new Set(['publish_threshold', 'pending_threshold', 'cron_schedule', 'app_base_url']);
+const editableSettings = new Set([
+  'publish_threshold',
+  'pending_threshold',
+  'cron_schedule',
+  'app_base_url',
+  'max_publish_per_crawl',
+  'min_score_to_publish',
+  'max_repo_radar_ai_per_crawl',
+  'openrouter_model',
+  'openrouter_fallback_model',
+  'openrouter_second_fallback_model',
+  'ai_translation_enabled',
+  'ai_importance_reason_enabled',
+  'allow_publish_without_ai',
+]);
 
 function maskSetting(key: string, value: string) {
   if (key.includes('token') || key.includes('password') || key.includes('secret') || key.includes('encryption')) {
@@ -46,10 +60,21 @@ export async function PUT(request: NextRequest) {
       if (typeof value !== 'string') {
         return NextResponse.json({ error: `Invalid ${key}` }, { status: 400 });
       }
-      if ((key === 'publish_threshold' || key === 'pending_threshold')) {
+      if (['publish_threshold', 'pending_threshold', 'min_score_to_publish'].includes(key)) {
         const numeric = Number(value);
         if (!Number.isInteger(numeric) || numeric < 0 || numeric > 100) {
           return NextResponse.json({ error: `${key} must be an integer from 0 to 100` }, { status: 400 });
+        }
+      }
+      if (['max_publish_per_crawl', 'max_repo_radar_ai_per_crawl'].includes(key)) {
+        const numeric = Number(value);
+        if (!Number.isInteger(numeric) || numeric < 0 || numeric > 50) {
+          return NextResponse.json({ error: `${key} must be an integer from 0 to 50` }, { status: 400 });
+        }
+      }
+      if (['ai_translation_enabled', 'ai_importance_reason_enabled', 'allow_publish_without_ai'].includes(key)) {
+        if (!['true', 'false'].includes(value.trim().toLowerCase())) {
+          return NextResponse.json({ error: `${key} must be true or false` }, { status: 400 });
         }
       }
       await setSetting(key, value.trim(), false);

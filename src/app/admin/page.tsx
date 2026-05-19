@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requireAdminPage } from '@/lib/authGuard';
 import { prisma } from '@/lib/prisma';
-import { getSetting } from '@/lib/settings';
+import { getAppSettings } from '@/lib/settings';
 import AdminLogoutButton from '@/components/AdminLogoutButton';
 
 async function getStats() {
@@ -12,8 +12,7 @@ async function getStats() {
     rejectedArticles,
     sourcesCount,
     lastCrawlRun,
-    telegramToken,
-    telegramChatId,
+    settings,
   ] = await Promise.all([
     prisma.article.count(),
     prisma.article.count({ where: { status: 'published' } }),
@@ -21,8 +20,7 @@ async function getStats() {
     prisma.article.count({ where: { status: 'rejected' } }),
     prisma.source.count({ where: { enabled: true } }),
     prisma.crawlRun.findFirst({ orderBy: { startedAt: 'desc' } }),
-    getSetting('telegram_bot_token'),
-    getSetting('telegram_chat_id'),
+    getAppSettings(),
   ]);
 
   return {
@@ -32,7 +30,7 @@ async function getStats() {
     rejectedArticles,
     sourcesCount,
     lastCrawlRun,
-    telegramConfigured: Boolean(telegramToken && telegramChatId),
+    telegramConfigured: Boolean(settings.telegram_bot_token && settings.telegram_chat_id),
   };
 }
 
@@ -66,6 +64,7 @@ export default async function AdminDashboardPage() {
           ['/admin/settings', 'Cài đặt'],
           ['/admin/telegram', 'Telegram'],
           ['/admin/crawl-logs', 'Crawl logs'],
+          ['/admin/repo-radar', 'Repo Radar'],
         ].map(([href, label]) => (
           <Link key={href} href={href} className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">
             {label}

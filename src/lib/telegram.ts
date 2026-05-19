@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import { getSetting, setSetting } from './settings';
+import { getAppSettings, getSetting, setSetting } from './settings';
 
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 
@@ -45,7 +45,8 @@ function maskChatId(chatId: string): string {
  * Send a text message to a Telegram chat via Bot API.
  */
 export async function sendTelegramMessage(message: TelegramMessage): Promise<boolean> {
-  const botToken = await getSetting('telegram_bot_token');
+  const settings = await getAppSettings();
+  const botToken = settings.telegram_bot_token;
   if (!botToken) {
     console.warn('[Telegram] Bot token not configured. Skipping message.');
     return false;
@@ -91,6 +92,64 @@ export async function sendTelegramMessage(message: TelegramMessage): Promise<boo
       err instanceof Error ? err.message : 'Unknown error'
     );
 
+    return false;
+  }
+}
+
+export async function sendPublishedArticleTelegram(article: {
+  id: string;
+  title: string;
+  summaryVi: string;
+  whyImportant?: string;
+  importanceScore: number;
+  sourceName: string;
+  tags: string;
+  slug: string;
+}): Promise<boolean> {
+  const settings = await getAppSettings();
+  const botToken = settings.telegram_bot_token;
+  const chatId = settings.telegram_chat_id;
+
+  if (!botToken || !chatId) {
+    await logArticleTelegram(article.id, chatId || '', 'failed', 'Telegram is not configured');
+    return false;
+  }
+
+  const tags = article.tags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .slice(0, 5)
+    .join(', ');
+  const baseUrl = settings.app_base_url.replace(/\/$/, '');
+  const text = [
+    '🔥 AI Important News',
+    '',
+    article.title,
+    '',
+    article.summaryVi,
+    '',
+    'Vì sao quan trọng:',
+    article.whyImportant || 'Chưa có ghi chú.',
+    '',
+    `Điểm: ${article.importanceScore}/100`,
+    `Nguồn: ${article.sourceName}`,
+    `Tag: ${tags || 'N/A'}`,
+    '',
+    `Xem chi tiết: ${baseUrl}/articles/${article.slug}`,
+  ].join('\n');
+
+  try {
+    const response = await fetch(`${TELEGRAM_API}${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    });
+    const result = await response.json().catch(() => ({}));
+    await logArticleTelegram(article.id, chatId, result.ok ? 'sent' : 'failed', result.ok ? undefined : result.description || 'Telegram API error');
+    return Boolean(result.ok);
+  } catch (error) {
+    await logArticleTelegram(article.id, chatId, 'failed', error instanceof Error ? error.message : String(error));
     return false;
   }
 }

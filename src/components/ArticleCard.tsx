@@ -26,7 +26,7 @@ export default function ArticleCard({ article }: { article: ArticleSummary }) {
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <h3 className="line-clamp-2 text-base font-semibold leading-snug text-slate-950 group-hover:text-sky-700">
-          {article.title}
+          {article.titleVi || article.title}
         </h3>
         <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
           {article.importanceScore}
@@ -34,8 +34,14 @@ export default function ArticleCard({ article }: { article: ArticleSummary }) {
       </div>
 
       <p className="mb-4 line-clamp-3 text-sm leading-6 text-slate-600">
-        {article.summaryVi}
+        {article.briefVi || article.summaryVi}
       </p>
+
+      {article.whyImportant && (
+        <p className="mb-4 line-clamp-2 text-sm leading-6 text-slate-700">
+          {article.whyImportant}
+        </p>
+      )}
 
       <div className="mb-3 flex flex-wrap gap-2">
         <span className="rounded-md bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700">

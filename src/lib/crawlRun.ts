@@ -21,6 +21,12 @@ export async function finishCrawlRun(
     totalPublished: number;
     totalRejected: number;
     totalPending: number;
+    totalCandidates?: number;
+    totalDuplicates?: number;
+    aiSuccess?: number;
+    aiFailed?: number;
+    telegramSent?: number;
+    repoRadarFound?: number;
     errorMessage?: string;
   }
 ): Promise<void> {

@@ -64,10 +64,17 @@ export async function PATCH(
 
     const updateData: {
       status?: string;
+      title?: string;
+      titleVi?: string;
       summaryVi?: string;
+      briefVi?: string;
+      whyImportant?: string;
       contentVi?: string;
       category?: string;
       tags?: string;
+      aiTags?: string;
+      targetAudience?: string;
+      impactLevel?: string;
       importanceScore?: number;
       reasonForScore?: string;
       publishedAt?: Date;
@@ -83,7 +90,7 @@ export async function PATCH(
       }
     }
 
-    for (const field of ['summaryVi', 'contentVi', 'category', 'tags', 'reasonForScore'] as const) {
+    for (const field of ['title', 'titleVi', 'summaryVi', 'briefVi', 'whyImportant', 'contentVi', 'category', 'tags', 'aiTags', 'targetAudience', 'impactLevel', 'reasonForScore'] as const) {
       if (field in body) {
         if (typeof body[field] !== 'string') {
           return NextResponse.json({ error: `Invalid ${field}` }, { status: 400 });

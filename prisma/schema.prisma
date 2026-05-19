@@ -12,8 +12,11 @@ datasource db {
 model Article {
   id                   String   @id @default(cuid())
   title                String
+  titleVi              String   @default("")
   slug                 String   @unique
   summaryVi            String
+  briefVi              String   @default("")
+  whyImportant         String   @default("")
   contentVi            String   @default("")
   sourceName           String
   sourceUrl            String
@@ -24,9 +27,20 @@ model Article {
   publishedAt          DateTime?
   category             String   @default("general")
   tags                 String   @default("")
+  aiTags               String   @default("")
+  targetAudience       String   @default("")
+  impactLevel          String   @default("")
   importanceScore      Int      @default(0)
   reasonForScore       String   @default("")
   status               String   @default("draft") // draft, pending, published, rejected
+  aiProvider           String   @default("")
+  aiModel              String   @default("")
+  aiStatus             String   @default("pending") // pending, success, failed, blocked, fallback_success
+  aiError              String   @default("")
+  aiProcessedAt        DateTime?
+  duplicateOfId        String?
+  duplicateReason      String   @default("")
+  canonicalUrl         String   @default("")
   telegramSent         Boolean  @default(false)
   contentHash          String   @default("")
   createdAt            DateTime @default(now())
@@ -37,7 +51,9 @@ model Article {
   @@index([sourceName])
   @@index([sourceUrl])
   @@index([originalUrl])
+  @@index([canonicalUrl])
   @@index([contentHash])
+  @@index([duplicateOfId])
   @@index([createdAt])
   @@index([slug])
 }
@@ -62,6 +78,12 @@ model CrawlRun {
   totalPublished  Int       @default(0)
   totalRejected   Int       @default(0)
   totalPending    Int       @default(0)
+  totalCandidates Int       @default(0)
+  totalDuplicates Int       @default(0)
+  aiSuccess        Int       @default(0)
+  aiFailed         Int       @default(0)
+  telegramSent     Int       @default(0)
+  repoRadarFound   Int       @default(0)
   errorMessage    String    @default("")
 }
 
@@ -82,4 +104,35 @@ model TelegramLog {
   errorMessage   String    @default("")
   sentAt         DateTime?
   createdAt      DateTime  @default(now())
+}
+
+model RepoRadarItem {
+  id           String   @id @default(cuid())
+  repoName     String
+  fullName     String   @unique
+  description  String   @default("")
+  url          String
+  owner        String
+  stars        Int      @default(0)
+  forks        Int      @default(0)
+  watchers     Int      @default(0)
+  language     String   @default("")
+  topics       String   @default("")
+  lastPushedAt DateTime?
+  firstSeenAt  DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+  repoScore    Int      @default(0)
+  aiSummaryVi  String   @default("")
+  whyImportant String   @default("")
+  status       String   @default("tracked") // tracked, published, ignored
+  aiProvider   String   @default("")
+  aiModel      String   @default("")
+  aiStatus     String   @default("pending")
+  aiError      String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([repoScore])
+  @@index([status])
+  @@index([lastPushedAt])
 }

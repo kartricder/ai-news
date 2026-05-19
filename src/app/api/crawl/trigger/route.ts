@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { runAllCrawlers } from '@/crawlers';
+import { runCrawlPipeline } from '@/lib/pipeline/crawlPipeline';
 import { requireAdminApi } from '@/lib/authGuard';
 
 export async function POST(request: NextRequest) {
@@ -8,17 +8,21 @@ export async function POST(request: NextRequest) {
   if (unauthorized) return unauthorized;
 
   try {
-    const result = await runAllCrawlers();
+    const result = await runCrawlPipeline();
     return NextResponse.json({
       data: {
         runId: result.runId,
-        totalFetched: result.total.fetched,
-        totalPublished: result.total.published,
-        totalPending: result.total.pending,
-        totalRejected: result.total.rejected,
-        totalDuplicates: result.total.duplicates,
-        errors: result.total.errors,
-        details: result.details,
+        totalFetched: result.fetched,
+        totalCandidates: result.candidates,
+        totalPublished: result.published,
+        totalPending: result.pending,
+        totalRejected: result.rejected,
+        totalDuplicates: result.duplicates,
+        aiSuccess: result.aiSuccess,
+        aiFailed: result.aiFailed,
+        telegramSent: result.telegramSent,
+        repoRadarFound: result.repoRadarFound,
+        errors: result.errors,
       },
     });
   } catch (error) {

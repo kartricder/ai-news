@@ -9,7 +9,8 @@
     "lint": "eslint",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
-    "crawl": "tsx scripts/run-crawl.ts"
+    "crawl": "tsx scripts/cron-crawl.ts",
+    "cron:crawl": "tsx scripts/cron-crawl.ts"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.8.0",

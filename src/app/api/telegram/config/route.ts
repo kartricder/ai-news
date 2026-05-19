@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSetting, setSetting } from '@/lib/settings';
+import { getAppSettings, setSetting } from '@/lib/settings';
 import { requireAdminApi } from '@/lib/authGuard';
 
 function maskSecret(value: string | null) {
@@ -13,14 +13,13 @@ export async function GET(request: NextRequest) {
   if (unauthorized) return unauthorized;
 
   try {
-    const token = await getSetting('telegram_bot_token');
-    const chatId = await getSetting('telegram_chat_id');
+    const settings = await getAppSettings();
 
     return NextResponse.json({
       data: {
-        telegram_bot_token: maskSecret(token),
-        telegram_chat_id: chatId || '',
-        configured: Boolean(token && chatId),
+        telegram_bot_token: maskSecret(settings.telegram_bot_token),
+        telegram_chat_id: settings.telegram_chat_id || '',
+        configured: Boolean(settings.telegram_bot_token && settings.telegram_chat_id),
       },
     });
   } catch (error) {

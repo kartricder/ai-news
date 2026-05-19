@@ -9,11 +9,15 @@ export function proxy(request: NextRequest) {
   if (
     pathname.startsWith('/admin') ||
     pathname.startsWith('/api/admin') ||
+    pathname.startsWith('/api/cron') ||
     pathname.startsWith('/api/crawl') ||
     pathname.startsWith('/api/telegram') ||
     (pathname.startsWith('/api/articles') && request.method === 'PATCH')
   ) {
     if (pathname === '/api/admin/login' || pathname === '/admin/login') {
+      return NextResponse.next();
+    }
+    if (pathname.startsWith('/api/cron')) {
       return NextResponse.next();
     }
 
@@ -38,6 +42,7 @@ export const config = {
   matcher: [
     '/admin/:path*',
     '/api/admin/:path*',
+    '/api/cron/:path*',
     '/api/crawl/:path*',
     '/api/telegram/:path*',
     '/api/articles/:path*',

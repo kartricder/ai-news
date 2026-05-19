@@ -23,6 +23,49 @@ export function generateContentHash(url: string, title: string): string {
   return Math.abs(hash).toString(16);
 }
 
+export function normalizeCanonicalUrl(url: string): string {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url.trim());
+    parsed.hash = '';
+    parsed.hostname = parsed.hostname.toLowerCase();
+    for (const key of [
+      'utm_source',
+      'utm_medium',
+      'utm_campaign',
+      'utm_term',
+      'utm_content',
+      'fbclid',
+      'gclid',
+    ]) {
+      parsed.searchParams.delete(key);
+    }
+    parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return url.trim().replace(/[?#].*$/, '').replace(/\/+$/, '');
+  }
+}
+
+export function normalizeTitleForDedupe(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function titleSimilarity(a: string, b: string): number {
+  const aWords = new Set(normalizeTitleForDedupe(a).split(' ').filter(Boolean));
+  const bWords = new Set(normalizeTitleForDedupe(b).split(' ').filter(Boolean));
+  if (aWords.size === 0 || bWords.size === 0) return 0;
+  let intersection = 0;
+  for (const word of aWords) {
+    if (bWords.has(word)) intersection++;
+  }
+  return intersection / Math.max(aWords.size, bWords.size);
+}
+
 export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength - 3) + '...';

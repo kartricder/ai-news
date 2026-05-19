@@ -182,11 +182,13 @@ abstract class BaseSourceCrawler {
         }
 
         const slug = await this.uniqueSlug(article.slug || generateSlug(article.title));
+        const { aiTags, ...articleData } = article;
         const created = await prisma.article.create({
           data: {
-            ...article,
+            ...articleData,
             slug,
             tags: Array.isArray(article.tags) ? article.tags.join(', ') : article.tags,
+            aiTags: Array.isArray(aiTags) ? aiTags.join(', ') : aiTags || '',
             originalPublishedAt: article.originalPublishedAt || new Date(),
             publishedAt: article.status === 'published' ? new Date() : null,
             contentHash: hash,

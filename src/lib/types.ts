@@ -3,15 +3,23 @@
 export interface ArticleSummary {
   id: string;
   title: string;
+  titleVi?: string;
   slug: string;
   summaryVi: string;
+  briefVi?: string;
+  whyImportant?: string;
   sourceName: string;
   originalUrl: string;
   category: string;
   tags: string;
+  aiTags?: string;
+  targetAudience?: string;
+  impactLevel?: string;
   importanceScore: number;
   reasonForScore: string;
   status: 'draft' | 'pending' | 'published' | 'rejected';
+  aiStatus?: string;
+  duplicateReason?: string;
   publishedAt: string | null;
   createdAt: string;
 }
