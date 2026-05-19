@@ -30,8 +30,8 @@ export default function AdminLoginPage() {
       return;
     }
 
-    router.push('/admin');
-    router.refresh();
+    // Redirect using window.location to ensure cookies are sent
+    window.location.href = '/admin';
   }
 
   return (
