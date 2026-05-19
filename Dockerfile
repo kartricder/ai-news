@@ -4,15 +4,21 @@
 FROM node:24-bookworm-slim AS deps
 WORKDIR /app
 
+# Install OpenSSL for Prisma
+RUN apt-get update -y && \
+    apt-get install -y openssl && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies
-RUN npm ci --only=production && \
-    npm cache clean --force
-
-# Install dev dependencies (needed for build)
-RUN npm ci && \
+# Install all dependencies
+# Use npm install if package-lock.json doesn't exist, otherwise use npm ci
+RUN if [ -f package-lock.json ]; then \
+      npm ci; \
+    else \
+      npm install; \
+    fi && \
     npm cache clean --force
 
 # ==================================
@@ -20,6 +26,9 @@ RUN npm ci && \
 # ==================================
 FROM node:24-bookworm-slim AS builder
 WORKDIR /app
+
+# Set DATABASE_URL for Prisma generation (will be overridden at runtime)
+ENV DATABASE_URL="file:./dev.db"
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
@@ -41,6 +50,11 @@ RUN npm run build
 # ==================================
 FROM node:24-bookworm-slim AS runner
 WORKDIR /app
+
+# Install OpenSSL for Prisma
+RUN apt-get update -y && \
+    apt-get install -y openssl && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set production environment
 ENV NODE_ENV=production \
