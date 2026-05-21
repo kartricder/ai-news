@@ -19,6 +19,7 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
     "crypto-js": "^4.2.0",
+    "geist": "^1.7.0",
     "next": "16.2.6",
     "node-cron": "^4.2.1",
     "prisma": "^7.8.0",
