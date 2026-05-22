@@ -2,6 +2,7 @@ import Link from 'next/link';
 import ArticleCard from '@/components/ArticleCard';
 import ScoreBadge, { getScoreConfig } from '@/components/ui/ScoreBadge';
 import EmptyState from '@/components/ui/EmptyState';
+import HomeSortSelect, { type HomeSort } from '@/components/HomeSortSelect';
 import type { ArticleSummary } from '@/types';
 import { prisma } from '@/lib/prisma';
 
@@ -27,6 +28,8 @@ const CATEGORIES = [
   { value: 'security', label: 'Bảo mật' },
   { value: 'policy', label: 'Chính sách' },
 ];
+
+const HOME_SORTS = new Set<HomeSort>(['importanceScore', 'createdAt']);
 
 async function getPublishedArticles(params: {
   page: number;
@@ -58,7 +61,10 @@ export default async function HomePage({
   const currentPage = Math.max(1, parseInt(params.page || '1', 10));
   const search = params.search?.trim() || '';
   const category = params.category?.trim() || '';
-  const sortBy = params.sortBy || 'importanceScore';
+  const requestedSort = params.sortBy?.trim();
+  const sortBy: HomeSort = requestedSort && HOME_SORTS.has(requestedSort as HomeSort)
+    ? requestedSort as HomeSort
+    : 'importanceScore';
 
   let response: ArticlesResponse = {
     data: [],
@@ -195,13 +201,7 @@ export default async function HomePage({
               className="h-8 w-44 rounded-full border border-slate-200 bg-white pl-3 pr-3 text-xs text-slate-700 focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-100"
             />
           </form>
-          <select
-            defaultValue={sortBy}
-            className="h-8 rounded-full border border-slate-200 bg-white px-3 text-xs text-slate-600 focus:border-sky-300 focus:outline-none"
-          >
-            <option value="importanceScore">Quan trọng nhất</option>
-            <option value="createdAt">Mới nhất</option>
-          </select>
+          <HomeSortSelect value={sortBy} />
           {isFiltered && (
             <Link href="/" className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500 hover:bg-slate-200">
               × Xóa bộ lọc
@@ -463,5 +463,4 @@ function FeaturedArticle({ article, now }: { article: ArticleSummary; now: numbe
     </Link>
   );
 }
-
 

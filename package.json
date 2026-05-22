@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:api": "tsx scripts/test-article-api-security.ts",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "crawl": "tsx scripts/cron-crawl.ts",

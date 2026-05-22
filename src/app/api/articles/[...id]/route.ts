@@ -5,7 +5,7 @@ import { requireAdminApi } from '@/lib/authGuard';
 const allowedStatuses = new Set(['draft', 'pending', 'published', 'rejected']);
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string[] }> }
 ) {
   try {
@@ -15,16 +15,84 @@ export async function GET(
     }
 
     const identifier = segments[0];
+    const isAdminDetail = segments[1] === 'admin';
+
+    if (isAdminDetail) {
+      const unauthorized = requireAdminApi(request);
+      if (unauthorized) return unauthorized;
+
+      const article = await prisma.article.findFirst({
+        where: { OR: [{ slug: identifier }, { id: identifier }] },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          titleVi: true,
+          summaryVi: true,
+          briefVi: true,
+          whyImportant: true,
+          contentVi: true,
+          sourceName: true,
+          sourceUrl: true,
+          originalUrl: true,
+          originalTitle: true,
+          originalPublishedAt: true,
+          fetchedAt: true,
+          publishedAt: true,
+          category: true,
+          tags: true,
+          aiTags: true,
+          targetAudience: true,
+          impactLevel: true,
+          importanceScore: true,
+          reasonForScore: true,
+          status: true,
+          aiStatus: true,
+          duplicateReason: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (!article) {
+        return NextResponse.json({ error: 'Article not found' }, { status: 404 });
+      }
+
+      return NextResponse.json({ data: article });
+    }
+
     const article = await prisma.article.findFirst({
-      where: { OR: [{ slug: identifier }, { id: identifier }] },
+      where: {
+        status: 'published',
+        OR: [{ slug: identifier }, { id: identifier }],
+      },
+      select: {
+        slug: true,
+        title: true,
+        titleVi: true,
+        summaryVi: true,
+        briefVi: true,
+        whyImportant: true,
+        contentVi: true,
+        sourceName: true,
+        sourceUrl: true,
+        originalUrl: true,
+        originalTitle: true,
+        originalPublishedAt: true,
+        fetchedAt: true,
+        publishedAt: true,
+        category: true,
+        tags: true,
+        aiTags: true,
+        targetAudience: true,
+        impactLevel: true,
+        importanceScore: true,
+        reasonForScore: true,
+        createdAt: true,
+      },
     });
 
     if (!article) {
-      return NextResponse.json({ error: 'Article not found' }, { status: 404 });
-    }
-
-    const isPublicView = segments.length === 1 || segments[1] !== 'admin';
-    if (isPublicView && article.status !== 'published') {
       return NextResponse.json({ error: 'Article not found' }, { status: 404 });
     }
 
