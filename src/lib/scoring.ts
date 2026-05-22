@@ -23,7 +23,7 @@ export function calculateImportance(article: {
 
   // ===== 1. Source quality (0-20 points) =====
   const premiumSources = ['OpenAI Blog', 'Anthropic Blog', 'Google AI Blog', 'DeepMind Blog', 'Meta AI Blog'];
-  const goodSources = ['GitHub Trending', 'Hacker News'];
+  const goodSources = ['GitHub Trending', 'Hacker News', 'HuggingFace Blog', 'VentureBeat AI', 'MIT Technology Review AI'];
   const standardSources = ['Reddit r/LocalLLaMA', 'Reddit r/MachineLearning', 'Reddit r/OpenAI'];
 
   if (premiumSources.includes(article.sourceName)) {

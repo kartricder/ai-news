@@ -48,7 +48,10 @@ export class RSSCrawler extends BaseSourceCrawler {
 
     for (const source of sources) {
       try {
-        const items = await this.fetchFeed(source.url, source.name);
+        let config: { maxItems?: number } = {};
+        try { config = JSON.parse(source.configJson); } catch { /* use default */ }
+        const maxItems = config.maxItems ?? 50;
+        const items = await this.fetchFeed(source.url, source.name, maxItems);
         if (items.length > 0) {
           console.log(`[RSS] Fetched ${items.length} items from ${source.url} -> sourceName="${source.name}"`);
         }
@@ -64,17 +67,25 @@ export class RSSCrawler extends BaseSourceCrawler {
     return allItems;
   }
 
-  private async fetchFeed(feedUrl: string, sourceName: string): Promise<ArticleData[]> {
+  private async fetchFeed(feedUrl: string, sourceName: string, maxItems = 50): Promise<ArticleData[]> {
     const feed = await this.parser.parseURL(feedUrl);
 
     if (!feed.items || feed.items.length === 0) {
       return [];
     }
 
-    console.log(`[RSS] Feed "${feed.title || feedUrl}" => sourceName="${sourceName}"`);
+    console.log(`[RSS] Feed "${feed.title || feedUrl}" => sourceName="${sourceName}" (${feed.items.length} total items)`);
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     return feed.items
       .filter((item) => item.title)
+      .filter((item) => {
+        if (!item.isoDate && !item.pubDate) return true;
+        const date = item.isoDate ? new Date(item.isoDate) : new Date(item.pubDate!);
+        return date >= thirtyDaysAgo;
+      })
+      .slice(0, maxItems)
       .map((item) => this.convertToArticle(item, feedUrl, sourceName));
   }
 

@@ -51,8 +51,8 @@ export class RedditCrawler extends BaseSourceCrawler {
         const response = await fetch(
           `https://www.reddit.com/r/${subreddit}/hot.json?limit=15`,
           {
-            headers: { 'User-Agent': 'AI-News-Aggregator/1.0' },
-            signal: AbortSignal.timeout(10000),
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AI-News-Reader/1.0; +https://github.com)' },
+            signal: AbortSignal.timeout(15000),
           }
         );
         const data: RedditResponse = await response.json();

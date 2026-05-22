@@ -13,27 +13,115 @@ async function main() {
   console.log('Seeding database...');
 
   // Create default sources
+  // Note: upsert so re-running seed fixes broken URLs without overriding admin's enabled/disabled choice
   const sources = [
-    { name: 'OpenAI Blog', type: 'rss', url: 'https://openai.com/blog/rss.xml', enabled: true },
-    { name: 'Anthropic Blog', type: 'rss', url: 'https://www.anthropic.com/feed.xml', enabled: true },
-    { name: 'Google AI Blog', type: 'rss', url: 'https://blog.google/technology/ai/rss/', enabled: true },
-    { name: 'Meta AI Blog', type: 'rss', url: 'https://ai.meta.com/blog/rss/', enabled: true },
-    { name: 'GitHub Trending', type: 'github', url: 'https://api.github.com/search/repositories?q=ai+llm+sort:stars', enabled: true },
-    { name: 'Hacker News', type: 'hackernews', url: 'https://hn.algolia.com/api/v1/search?query=ai&tags=story&hitsPerPage=20', enabled: true },
-    { name: 'Reddit r/LocalLLaMA', type: 'reddit', url: 'https://www.reddit.com/r/LocalLLaMA/hot.json', enabled: true },
-    { name: 'Reddit r/MachineLearning', type: 'reddit', url: 'https://www.reddit.com/r/MachineLearning/hot.json', enabled: true },
-    { name: 'Reddit r/OpenAI', type: 'reddit', url: 'https://www.reddit.com/r/OpenAI/hot.json', enabled: true },
-    { name: 'DeepMind Blog', type: 'rss', url: 'https://deepmind.google/blog/rss/', enabled: true },
+    {
+      name: 'OpenAI Blog',
+      type: 'rss',
+      url: 'https://openai.com/blog/rss.xml',
+      enabled: true,
+      configJson: '{"maxItems": 30}', // feed has 970+ items, cap to recent 30
+    },
+    {
+      name: 'Anthropic Blog',
+      type: 'rss',
+      url: 'https://www.anthropic.com/rss.xml',
+      enabled: false, // Anthropic does not publish a public RSS feed; disable until confirmed
+      configJson: '{}',
+    },
+    {
+      name: 'Google AI Blog',
+      type: 'rss',
+      url: 'https://blog.google/technology/ai/rss/',
+      enabled: true,
+      configJson: '{}',
+    },
+    {
+      name: 'DeepMind Blog',
+      type: 'rss',
+      url: 'https://deepmind.google/blog/rss.xml', // updated from /rss/ which returned 404
+      enabled: true,
+      configJson: '{}',
+    },
+    {
+      name: 'Meta AI Blog',
+      type: 'rss',
+      url: 'https://ai.meta.com/blog/rss.xml',
+      enabled: false, // Meta AI does not publish a public RSS feed; disable until confirmed
+      configJson: '{}',
+    },
+    {
+      name: 'HuggingFace Blog',
+      type: 'rss',
+      url: 'https://huggingface.co/blog/feed.xml',
+      enabled: true,
+      configJson: '{}',
+    },
+    {
+      name: 'VentureBeat AI',
+      type: 'rss',
+      url: 'https://venturebeat.com/category/ai/feed/',
+      enabled: true,
+      configJson: '{"maxItems": 30}',
+    },
+    {
+      name: 'MIT Technology Review AI',
+      type: 'rss',
+      url: 'https://www.technologyreview.com/topic/artificial-intelligence/feed/',
+      enabled: true,
+      configJson: '{"maxItems": 30}',
+    },
+    {
+      name: 'GitHub Trending',
+      type: 'github',
+      url: 'https://api.github.com/search/repositories?q=ai+llm+sort:stars',
+      enabled: true,
+      configJson: '{}',
+    },
+    {
+      name: 'Hacker News',
+      type: 'hackernews',
+      url: 'https://hn.algolia.com/api/v1/search?query=ai&tags=story&hitsPerPage=20',
+      enabled: true,
+      configJson: '{}',
+    },
+    {
+      // Changed from type 'reddit' to 'rss' to bypass Reddit API blocking
+      name: 'Reddit r/LocalLLaMA',
+      type: 'rss',
+      url: 'https://www.reddit.com/r/LocalLLaMA/hot.rss?limit=25',
+      enabled: true,
+      configJson: '{}',
+    },
+    {
+      // Changed from type 'reddit' to 'rss' to bypass Reddit API blocking
+      name: 'Reddit r/MachineLearning',
+      type: 'rss',
+      url: 'https://www.reddit.com/r/MachineLearning/hot.rss?limit=25',
+      enabled: true,
+      configJson: '{}',
+    },
+    {
+      name: 'Reddit r/OpenAI',
+      type: 'reddit',
+      url: 'https://www.reddit.com/r/OpenAI/hot.json',
+      enabled: true,
+      configJson: '{}',
+    },
   ];
 
   for (const source of sources) {
-    const existing = await prisma.source.findUnique({ where: { name: source.name } });
-    if (!existing) {
-      await prisma.source.create({ data: source });
-      console.log(`  Created source: ${source.name}`);
-    } else {
-      console.log(`  Skipped (exists): ${source.name}`);
-    }
+    await prisma.source.upsert({
+      where: { name: source.name },
+      create: source,
+      update: {
+        url: source.url,
+        type: source.type,
+        configJson: source.configJson,
+        // Note: 'enabled' is intentionally NOT updated so admin changes are preserved
+      },
+    });
+    console.log(`  Upserted source: ${source.name}`);
   }
 
   // Create default app settings
