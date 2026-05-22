@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import ScoreBadge, { getScoreConfig } from '@/components/ui/ScoreBadge';
+import BookmarkButton from '@/components/BookmarkButton';
 
 type PageProps<TRoute extends string> = {
   params: Promise<Record<string, string>> & (TRoute extends `${string}[${infer P}]${string}` ? Record<P, string> : unknown);
@@ -127,6 +128,20 @@ export default async function ArticleDetailPage(props: PageProps<'/articles/[slu
             {article.targetAudience && (
               <span className="text-xs text-slate-400">Đối tượng: {article.targetAudience}</span>
             )}
+          </div>
+
+          <div className="mt-4">
+            <BookmarkButton
+              article={{
+                slug: article.slug,
+                title: article.title,
+                titleVi: article.titleVi,
+                briefVi: article.briefVi || article.summaryVi,
+                sourceName: article.sourceName,
+                importanceScore: article.importanceScore,
+                publishedAt: article.publishedAt?.toISOString() ?? null,
+              }}
+            />
           </div>
         </header>
 

@@ -18,6 +18,11 @@ export const metadata: Metadata = {
     locale: 'vi_VN',
     siteName: 'AI News Việt Nam',
   },
+  alternates: {
+    types: {
+      'application/rss+xml': [{ url: '/feed.xml', title: 'AI News Việt Nam RSS' }],
+    },
+  },
 };
 
 function Footer() {

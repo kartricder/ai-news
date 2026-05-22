@@ -60,6 +60,7 @@ export default async function AdminDashboardPage() {
       <div className="mb-6 flex flex-wrap gap-2">
         {[
           ['/admin/articles', 'Bài viết'],
+          ['/admin/analytics', 'Analytics'],
           ['/admin/sources', 'Nguồn crawl'],
           ['/admin/settings', 'Cài đặt'],
           ['/admin/telegram', 'Telegram'],

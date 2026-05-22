@@ -7,6 +7,8 @@ import { useState, useRef, type FormEvent } from 'react';
 const NAV_LINKS = [
   { href: '/', label: 'Tin mới' },
   { href: '/?sortBy=importanceScore', label: 'Tin quan trọng' },
+  { href: '/today', label: 'Hôm nay' },
+  { href: '/saved', label: 'Đã lưu' },
   { href: '/repo-radar', label: 'Repo Radar' },
 ];
 
