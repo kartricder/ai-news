@@ -86,18 +86,16 @@ async function main() {
       configJson: '{}',
     },
     {
-      // Changed from type 'reddit' to 'rss' to bypass Reddit API blocking
       name: 'Reddit r/LocalLLaMA',
-      type: 'rss',
-      url: 'https://www.reddit.com/r/LocalLLaMA/hot.rss?limit=25',
+      type: 'reddit',
+      url: 'https://www.reddit.com/r/LocalLLaMA/hot.json',
       enabled: true,
       configJson: '{}',
     },
     {
-      // Changed from type 'reddit' to 'rss' to bypass Reddit API blocking
       name: 'Reddit r/MachineLearning',
-      type: 'rss',
-      url: 'https://www.reddit.com/r/MachineLearning/hot.rss?limit=25',
+      type: 'reddit',
+      url: 'https://www.reddit.com/r/MachineLearning/hot.json',
       enabled: true,
       configJson: '{}',
     },

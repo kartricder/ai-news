@@ -79,6 +79,11 @@ export class RedditCrawler extends BaseSourceCrawler {
       return true;
     });
 
+    const subredditNames = [...new Set(uniquePosts.map(item => item.subreddit))];
+    for (const name of subredditNames) {
+      console.log(`[Reddit] r/${name} => sourceName="${this.subredditToSourceName(name)}"`);
+    }
+
     return uniquePosts.map(item => this.convertToArticle(item.post, item.subreddit));
   }
 
@@ -87,13 +92,8 @@ export class RedditCrawler extends BaseSourceCrawler {
       'LocalLLaMA': 'Reddit r/LocalLLaMA',
       'MachineLearning': 'Reddit r/MachineLearning',
       'OpenAI': 'Reddit r/OpenAI',
-      // Subreddits without matching DB source will be tagged with a fallback
-      // and skipped by saveToDatabase()
     };
-    const name = map[subreddit] || `Reddit r/${subreddit}`;
-    // Log source name once per subreddit (not per article)
-    console.log(`[Reddit] r/${subreddit} => sourceName="${name}"`);
-    return name;
+    return map[subreddit] || `Reddit r/${subreddit}`;
   }
 
   private convertToArticle(post: RedditPost['data'], subreddit: string): ArticleData {
