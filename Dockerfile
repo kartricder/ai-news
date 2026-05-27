@@ -42,6 +42,9 @@ RUN npx prisma generate
 # Rebuild native dependencies for Linux
 RUN npm rebuild better-sqlite3
 
+# Khởi tạo database SQLite tạm thời để Next.js prerender không bị lỗi thiếu bảng
+RUN npx prisma db push
+
 # Build Next.js application
 RUN npm run build
 
