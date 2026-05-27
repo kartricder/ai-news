@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   description: 'Top tin tức AI quan trọng nhất trong 24h qua.',
 };
 
+export const dynamic = 'force-dynamic';
 export const revalidate = 300;
 
 function toArticleSummary(article: {
