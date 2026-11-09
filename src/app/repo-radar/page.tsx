@@ -8,7 +8,6 @@ export const metadata: Metadata = {
   description: 'Theo dõi các GitHub repository AI đang được cộng đồng chú ý, xếp hạng theo điểm repo và độ tích cực.',
 };
 
-export const dynamic = 'force-dynamic';
 export const revalidate = 300;
 
 export default async function RepoRadarPage({
