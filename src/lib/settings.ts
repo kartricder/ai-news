@@ -74,15 +74,15 @@ export async function getAppSettings(): Promise<AppSettings> {
   ]);
 
   return {
-    publish_threshold: parseInt(publishThreshold || '75', 10),
-    pending_threshold: parseInt(pendingThreshold || '60', 10),
+    publish_threshold: Math.max(0, Math.min(100, parseIntSetting(publishThreshold, 'PUBLISH_THRESHOLD', 75))),
+    pending_threshold: Math.max(0, Math.min(100, parseIntSetting(pendingThreshold, 'PENDING_THRESHOLD', 60))),
     cron_schedule: cronSchedule || '0 6 * * *',
     admin_username: adminUsername || 'admin',
     telegram_bot_token: telegramBotToken || envString('TELEGRAM_BOT_TOKEN'),
     telegram_chat_id: telegramChatId || envString('TELEGRAM_CHAT_ID'),
     app_base_url: appBaseUrl || process.env.APP_BASE_URL || 'http://localhost:3000',
-    max_publish_per_crawl: parseIntSetting(maxPublishPerCrawl, 'MAX_PUBLISH_PER_CRAWL', 10),
-    min_score_to_publish: parseIntSetting(minScoreToPublish, 'MIN_SCORE_TO_PUBLISH', 75),
+    max_publish_per_crawl: Math.max(0, Math.min(10, parseIntSetting(maxPublishPerCrawl, 'MAX_PUBLISH_PER_CRAWL', 10))),
+    min_score_to_publish: Math.max(0, Math.min(100, parseIntSetting(minScoreToPublish, 'MIN_SCORE_TO_PUBLISH', 75))),
     max_repo_radar_ai_per_crawl: parseIntSetting(maxRepoRadarAiPerCrawl, 'MAX_REPO_RADAR_AI_PER_CRAWL', 10),
     openrouter_model: openrouterModel || envString('OPENROUTER_MODEL', 'openrouter/auto'),
     openrouter_fallback_model: openrouterFallbackModel || envString('OPENROUTER_FALLBACK_MODEL', 'google/gemini-2.5-flash'),

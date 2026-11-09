@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ArticleSummary } from '@/types';
 import ScoreBadge, { getScoreConfig } from '@/components/ui/ScoreBadge';
+import { normalizeCategory } from '@/lib/news/categories';
 
 export function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -37,7 +38,7 @@ export default function ArticleCard({ article }: { article: ArticleSummary }) {
   const displayTitle = article.titleVi || article.title;
   const displayBrief = article.briefVi || article.summaryVi;
   const dateStr = article.publishedAt || article.createdAt;
-  const categoryLabel = CATEGORY_LABELS[article.category] || article.category;
+  const categoryLabel = CATEGORY_LABELS[normalizeCategory(article.category)] || article.category;
 
   return (
     <Link

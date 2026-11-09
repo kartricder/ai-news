@@ -41,7 +41,9 @@ export default function AdminRepoRadarPage() {
   }
 
   async function publish(id: string) {
-    const res = await fetch(`/api/admin/repo-radar/${id}/publish`, { method: 'POST' });
+    const reviewReason = window.prompt('Lý do duyệt repo discovery (ít nhất 12 ký tự):');
+    if (!reviewReason || !window.confirm('Đã kiểm tra nội dung tiếng Việt và chấp nhận ngoại lệ discovery, không coi đây là release mới?')) return;
+    const res = await fetch(`/api/admin/repo-radar/${id}/publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewOverride: true, reviewReason }) });
     const data = await res.json().catch(() => ({}));
     setMessage(res.ok ? `Da publish: ${data.data?.slug || 'repo'}` : data.error || 'Publish failed');
     await load();

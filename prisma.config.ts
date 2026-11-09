@@ -1,9 +1,10 @@
 import 'dotenv/config';
-import { defineConfig, env } from 'prisma/config';
+import { defineConfig } from 'prisma/config';
+import { resolveSqliteUrl } from './src/lib/databaseUrl';
 
 export default defineConfig({
   datasource: {
-    url: env('DATABASE_URL'),
+    url: resolveSqliteUrl(process.env.DATABASE_URL, __dirname),
   },
   schema: './prisma/schema.prisma',
   migrations: {

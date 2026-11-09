@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { getAdminPayloadFromRequest } from '@/lib/authGuard';
+import { categoryAliases } from '@/lib/news/categories';
 
 const allowedStatuses = new Set(['draft', 'pending', 'published', 'rejected']);
 
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const where: Prisma.ArticleWhereInput = {};
     where.status = isAdmin ? status : 'published';
-    if (category) where.category = category;
+    if (category) where.category = { in: categoryAliases(category) };
     if (source) where.sourceName = source;
     if (search) {
       where.OR = [
@@ -71,6 +72,23 @@ export async function GET(request: NextRequest) {
           status: true,
           aiStatus: true,
           duplicateReason: true,
+          identityKey: true,
+          fingerprint: true,
+          pendingFingerprint: true,
+          contentChangedAt: true,
+          identityReviewReason: true,
+          evidenceLevel: true,
+          qualityFlags: true,
+          processingReason: true,
+          processingStatus: true,
+          processingAttempts: true,
+          nextRetryAt: true,
+          scoreVersion: true,
+          scoreBreakdown: true,
+          publisherKey: true,
+          sourceKind: true,
+          eventKey: true,
+          externalVersion: true,
           publishedAt: true,
           createdAt: true,
         }

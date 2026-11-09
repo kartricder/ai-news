@@ -5,9 +5,7 @@
  * Usage: npx tsx scripts/crawl-direct.ts
  */
 
-import { PrismaClient } from '@prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
-import path from 'path';
+import { prisma } from '../src/lib/prisma';
 import { RSSCrawler } from '../src/crawlers/RSSCrawler';
 import { RedditCrawler } from '../src/crawlers/RedditCrawler';
 // GitHubTrendingCrawler & HackerNewsCrawler need env keys; uncomment when available
@@ -28,12 +26,6 @@ const DB_SOURCE_NAMES = [
 ];
 
 async function main() {
-  // Initialize PrismaClient with adapter for better-sqlite3 (Prisma v7.x)
-  const dbPath = path.resolve(process.cwd(), 'prisma', 'dev.db');
-  console.log(`DB path: ${dbPath}`);
-  const adapter = new PrismaBetterSqlite3({ url: dbPath });
-  const prisma = new PrismaClient({ adapter });
-
   // 1. Show DB sources
   const dbSources = await prisma.source.findMany();
   console.log('=== DB Sources (' + dbSources.length + ') ===');

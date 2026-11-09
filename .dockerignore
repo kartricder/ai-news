@@ -3,7 +3,6 @@ node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
 pnpm-lock.yaml
 
 # Next.js
@@ -17,6 +16,8 @@ prisma/dev.db
 prisma/dev.db-journal
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
 # Logs
 logs

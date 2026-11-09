@@ -41,6 +41,34 @@ model Article {
   duplicateOfId        String?
   duplicateReason      String   @default("")
   canonicalUrl         String   @default("")
+  identityKey          String?  @unique
+  sourceId             String?
+  externalId           String?
+  fingerprint          String   @default("")
+  pendingFingerprint   String   @default("")
+  contentChangedAt     DateTime?
+  identityReviewReason String   @default("")
+  originalText         String   @default("")
+  originalLanguage     String?
+  evidenceLevel        String   @default("title_only")
+  qualityFlags         String   @default("[]")
+  processingReason     String   @default("")
+  eventKey             String?
+  externalVersion      String?
+  scoreVersion         String   @default("")
+  scoreBreakdown       String   @default("{}")
+  publisherKey         String   @default("")
+  sourceKind           String   @default("media")
+  processingStatus     String   @default("review")
+  processingAttempts   Int      @default(0)
+  nextRetryAt          DateTime?
+  leaseUntil           DateTime?
+  leaseOwner           String?
+  promptVersion        String   @default("")
+  schemaVersion        String   @default("")
+  inputHash            String   @default("")
+  aiClaims             String   @default("[]")
+  aiUncertainties      String   @default("[]")
   telegramSent         Boolean  @default(false)
   contentHash          String   @default("")
   createdAt            DateTime @default(now())
@@ -56,6 +84,8 @@ model Article {
   @@index([duplicateOfId])
   @@index([createdAt])
   @@index([slug])
+  @@index([eventKey, originalPublishedAt])
+  @@index([status, processingStatus, nextRetryAt])
 }
 
 model Source {
@@ -65,8 +95,54 @@ model Source {
   url        String
   enabled    Boolean  @default(true)
   configJson String   @default("{}")
+  catalogId  String?  @unique
+  publisherKey String @default("")
+  kind String @default("")
+  language String?
+  discoveryUrl String @default("")
+  verificationStatus String @default("unverified")
+  verifiedAt DateTime?
+  lastAttemptAt DateTime?
+  lastSuccessAt DateTime?
+  lastError String @default("")
+  consecutiveFailures Int @default(0)
+  nextAttemptAt DateTime?
+  etag String?
+  lastModified String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model SourceFetchLog {
+  id String @id @default(cuid())
+  runId String?
+  sourceId String
+  status String
+  fetchedCount Int @default(0)
+  durationMs Int
+  httpStatus Int?
+  errorCode String?
+  fetchedAt DateTime @default(now())
+  @@index([runId])
+  @@index([sourceId, fetchedAt])
+}
+
+model NewsCluster {
+  id String @id @default(cuid())
+  eventKey String @unique
+  createdAt DateTime @default(now())
+}
+
+model NewsClusterLink {
+  id String @id @default(cuid())
+  clusterId String
+  articleId String
+  confidence Float
+  reasons String @default("[]")
+  status String @default("suggested")
+  createdAt DateTime @default(now())
+  @@unique([clusterId, articleId])
+  @@index([articleId])
 }
 
 model CrawlRun {
@@ -94,6 +170,73 @@ model AppSetting {
   encrypted Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AiAttempt {
+  id String @id
+  articleId String?
+  repoId String?
+  requestId String?
+  requestedModel String
+  model String @default("")
+  provider String @default("")
+  status String @default("reserved")
+  errorCode String @default("")
+  latencyMs Int @default(0)
+  inputTokens Int?
+  outputTokens Int?
+  actualUsd Float?
+  promptVersion String
+  schemaVersion String
+  createdAt DateTime @default(now())
+  @@index([articleId, createdAt])
+  @@index([repoId, createdAt])
+}
+
+model AiBudgetDay {
+  day String @id
+  spentMicros BigInt @default(0)
+  reservedMicros BigInt @default(0)
+  unknownCount Int @default(0)
+}
+
+model AiReservation {
+  id String @id
+  day String
+  estimatedMicros BigInt
+  actualMicros BigInt?
+  status String @default("reserved")
+  createdAt DateTime @default(now())
+  settledAt DateTime?
+  @@index([day, status])
+}
+
+model AiResultCache {
+  id String @id @default(cuid())
+  articleId String
+  inputHash String
+  promptVersion String
+  schemaVersion String
+  resultJson String
+  createdAt DateTime @default(now())
+  @@unique([articleId, inputHash, promptVersion, schemaVersion])
+}
+
+model AdminAudit {
+  id String @id @default(cuid())
+  actor String
+  action String
+  articleId String?
+  beforeJson String
+  afterJson String
+  createdAt DateTime @default(now())
+  @@index([articleId, createdAt])
+}
+
+model WorkerLease {
+  name String @id
+  owner String
+  leaseUntil DateTime
 }
 
 model TelegramLog {
@@ -129,6 +272,11 @@ model RepoRadarItem {
   aiModel      String   @default("")
   aiStatus     String   @default("pending")
   aiError      String   @default("")
+  processingAttempts Int @default(0)
+  nextRetryAt DateTime?
+  leaseOwner String?
+  leaseUntil DateTime?
+  inputHash String @default("")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

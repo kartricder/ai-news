@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireAdminPage } from '@/lib/authGuard';
 import { prisma } from '@/lib/prisma';
+import { getQualityStats } from '@/lib/news/qualityStats';
 
 const SCORE_RANGES = [
   { label: '0-20', min: 0, max: 20 },
@@ -27,6 +28,7 @@ function Bar({ value, total }: { value: number; total: number }) {
 
 export default async function AdminAnalyticsPage() {
   await requireAdminPage();
+  const quality = await getQualityStats();
 
   const [
     totalArticles,
@@ -95,6 +97,25 @@ export default async function AdminAnalyticsPage() {
           </div>
         ))}
       </div>
+
+      <section className="mt-6 border-y border-slate-200 py-5">
+        <h2 className="text-lg font-semibold">Quality / Budget · {quality.day} UTC</h2>
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ['Known spend', `$${quality.knownUsd.toFixed(6)}`],
+            ['Reserved (unknown + unsettled)', `$${quality.reservedUsd.toFixed(6)}`],
+            ['Daily limit', `$${quality.dailyBudgetUsd.toFixed(6)}`],
+            ['Unknown / Unsettled attempts', `${quality.unknownAttempts} / ${quality.unsettledAttempts}`],
+          ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 break-words font-semibold">{value}</dd></div>)}
+        </dl>
+        <p className="mt-4 text-sm text-slate-600">Cũ nhất pending: {quality.oldestPendingAt ? `${quality.oldestPendingHours} giờ · ${quality.oldestPendingAt}` : '-'} · review {quality.review}</p>
+        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">{quality.backlog.map((entry) => <span key={entry.status}>{entry.status}: <strong>{entry.count}</strong></span>)}</div>
+        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          <div className="min-w-0 overflow-x-auto"><table className="w-full min-w-[360px] text-left text-xs"><caption className="py-2 text-left font-semibold">Model Errors · All Time</caption><thead><tr><th className="p-2">Model</th><th className="p-2">Code</th><th className="p-2">Count</th></tr></thead><tbody>{quality.modelErrors.map((entry) => <tr key={`${entry.model}:${entry.code}`} className="border-t border-slate-200"><td className="max-w-40 break-all p-2">{entry.model}</td><td className="p-2">{entry.code}</td><td className="p-2">{entry.count}</td></tr>)}</tbody></table></div>
+          <div className="min-w-0 overflow-x-auto"><table className="w-full min-w-[360px] text-left text-xs"><caption className="py-2 text-left font-semibold">Source Errors</caption><thead><tr><th className="p-2">Source</th><th className="p-2">Code</th><th className="p-2">Failures</th></tr></thead><tbody>{quality.sourceErrors.map((entry) => <tr key={entry.id} className="border-t border-slate-200"><td className="p-2">{entry.name}</td><td className="break-all p-2">{entry.lastError}</td><td className="p-2">{entry.consecutiveFailures}</td></tr>)}</tbody></table></div>
+        </div>
+        <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[360px] text-left text-xs"><caption className="py-2 text-left font-semibold">Source Kind Coverage · All Time</caption><thead><tr><th className="p-2">Kind</th><th className="p-2">Status</th><th className="p-2">Articles</th></tr></thead><tbody>{quality.coverage.map((entry) => <tr key={`${entry.kind}:${entry.status}`} className="border-t border-slate-200"><td className="p-2">{entry.kind || 'legacy'}</td><td className="p-2">{entry.status}</td><td className="p-2">{entry.count}</td></tr>)}</tbody></table></div>
+      </section>
 
       <section className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-5 py-4">

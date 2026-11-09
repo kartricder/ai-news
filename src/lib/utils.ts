@@ -1,4 +1,5 @@
 import slugify from 'slugify';
+import { fingerprintContent, normalizeArticleUrl } from './news/identity';
 
 export function generateSlug(title: string): string {
   const base = slugify(title, {
@@ -12,39 +13,11 @@ export function generateSlug(title: string): string {
 }
 
 export function generateContentHash(url: string, title: string): string {
-  // Simple hash for deduplication
-  let hash = 0;
-  const str = url + title;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16);
+  return fingerprintContent(title, normalizeArticleUrl(url) || url);
 }
 
 export function normalizeCanonicalUrl(url: string): string {
-  if (!url) return '';
-  try {
-    const parsed = new URL(url.trim());
-    parsed.hash = '';
-    parsed.hostname = parsed.hostname.toLowerCase();
-    for (const key of [
-      'utm_source',
-      'utm_medium',
-      'utm_campaign',
-      'utm_term',
-      'utm_content',
-      'fbclid',
-      'gclid',
-    ]) {
-      parsed.searchParams.delete(key);
-    }
-    parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/';
-    return parsed.toString().replace(/\/$/, '');
-  } catch {
-    return url.trim().replace(/[?#].*$/, '').replace(/\/+$/, '');
-  }
+  return normalizeArticleUrl(url) || '';
 }
 
 export function normalizeTitleForDedupe(title: string): string {

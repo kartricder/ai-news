@@ -1,4 +1,12 @@
+import type { RawNewsItem, SourceKind } from '../lib/news/types';
+
 export interface ArticleData {
+  newsItem?: RawNewsItem;
+  publisherKey?: string;
+  sourceKind?: SourceKind;
+  sourceId?: string;
+  externalId?: string;
+  originalText?: string;
   title: string;
   titleVi?: string;
   summaryVi: string;

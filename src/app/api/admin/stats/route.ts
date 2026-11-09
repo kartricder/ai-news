@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { NextRequest } from 'next/server';
 import { requireAdminApi } from '@/lib/authGuard';
+import { getQualityStats } from '@/lib/news/qualityStats';
 
 export async function GET(request: NextRequest) {
   const unauthorized = requireAdminApi(request);
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       data: {
+        quality: await getQualityStats(),
         totalArticles,
         publishedArticles,
         pendingArticles,

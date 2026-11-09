@@ -1,19 +1,21 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import path from 'path';
 import { hashPassword } from '../src/lib/auth';
+import { resolveSqliteUrl } from '../src/lib/databaseUrl';
+import { importSourceCatalog } from '../src/lib/sources/importCatalog';
 
 async function main() {
-  const dbPath = path.resolve(__dirname, 'dev.db');
-  console.log('Connecting to database at:', dbPath);
+  const url = resolveSqliteUrl(process.env.DATABASE_URL, path.resolve(__dirname, '..'));
+  console.log('Connecting to database at:', url);
 
-  const adapter = new PrismaBetterSqlite3({ url: dbPath });
+  const adapter = new PrismaBetterSqlite3({ url });
   const prisma = new PrismaClient({ adapter });
 
   console.log('Seeding database...');
 
   // Create default sources
-  // Note: upsert so re-running seed fixes broken URLs without overriding admin's enabled/disabled choice
   const sources = [
     {
       name: 'OpenAI Blog',
@@ -113,16 +115,13 @@ async function main() {
   for (const source of sources) {
     await prisma.source.upsert({
       where: { name: source.name },
-      create: source,
-      update: {
-        url: source.url,
-        type: source.type,
-        configJson: source.configJson,
-        // Note: 'enabled' is intentionally NOT updated so admin changes are preserved
-      },
+      create: { ...source, enabled: false },
+      update: {},
     });
     console.log(`  Upserted source: ${source.name}`);
   }
+
+  await importSourceCatalog(prisma);
 
   // Create default app settings
   const adminPassword = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === 'production' ? '' : 'admin123');
@@ -140,6 +139,11 @@ async function main() {
     { key: 'ai_translation_enabled', value: process.env.AI_TRANSLATION_ENABLED || 'true', encrypted: false },
     { key: 'ai_importance_reason_enabled', value: process.env.AI_IMPORTANCE_REASON_ENABLED || 'true', encrypted: false },
     { key: 'allow_publish_without_ai', value: process.env.ALLOW_PUBLISH_WITHOUT_AI || 'false', encrypted: false },
+    ...[
+      ['ai_processing_enabled', 'false'], ['ai_auto_publish_enabled', 'false'], ['ai_daily_budget_usd', '0'],
+      ['ai_max_input_tokens', '0'], ['ai_max_output_tokens', '0'], ['ai_pricing_json', '{}'],
+      ['pending_processing_enabled', 'false'], ['pending_cron_schedule', '*/15 * * * *'], ['pending_process_limit', '10'],
+    ].map(([key, fallback]) => ({ key, value: process.env[key.toUpperCase()] || fallback, encrypted: false })),
     { key: 'admin_username', value: process.env.ADMIN_USERNAME || 'admin', encrypted: false },
     { key: 'admin_password_hashed', value: adminPassword ? await hashPassword(adminPassword) : '', encrypted: true },
     { key: 'telegram_bot_token', value: '', encrypted: true },

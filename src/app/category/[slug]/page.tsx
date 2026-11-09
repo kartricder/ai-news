@@ -5,6 +5,7 @@ import ArticleCard from '@/components/ArticleCard';
 import EmptyState from '@/components/ui/EmptyState';
 import { prisma } from '@/lib/prisma';
 import type { ArticleSummary } from '@/types';
+import { categoryAliases, normalizeCategory } from '@/lib/news/categories';
 
 const PAGE_SIZE = 12;
 
@@ -57,7 +58,7 @@ type PageProps = {
 };
 
 function categoryFor(slug: string) {
-  return CATEGORIES[slug];
+  return CATEGORIES[slug] || (['tool-release', 'industry', 'breakthrough'].includes(slug) ? CATEGORIES[normalizeCategory(slug)] : undefined);
 }
 
 function toArticleSummary(article: {
@@ -110,7 +111,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
   if (!category) notFound();
 
   const page = Math.max(1, Number.parseInt(query.page || '1', 10) || 1);
-  const where = { status: 'published', category: slug };
+  const where = { status: 'published', category: { in: categoryAliases(slug) } };
   const [articles, total] = await Promise.all([
     prisma.article.findMany({
       where,

@@ -2,9 +2,11 @@ import cron, { type ScheduledTask } from 'node-cron';
 import { runAllCrawlers } from '@/crawlers';
 import { getSetting, setSetting } from '@/lib/settings';
 import { postDailySummary, notifyError } from '@/lib/telegram';
+import { runPendingCronTick } from '@/lib/pipeline/pendingCron';
 
 const globalScheduler = globalThis as unknown as {
   aiNewsSchedulerTask?: ScheduledTask | null;
+  aiNewsPendingTask?: ScheduledTask | null;
 };
 
 if (globalScheduler.aiNewsSchedulerTask === undefined) {
@@ -54,9 +56,14 @@ export async function startScheduler(cronExpression?: string): Promise<void> {
   globalScheduler.aiNewsSchedulerTask = cron.schedule(expression, async () => {
     await runScheduler();
   });
+  globalScheduler.aiNewsPendingTask = cron.schedule('* * * * *', async () => {
+    try { await runPendingCronTick(); } catch { console.error('[Scheduler] pending tick failed'); }
+  }, { timezone: 'UTC', noOverlap: true });
 }
 
 export function stopScheduler(): void {
+  globalScheduler.aiNewsPendingTask?.stop();
+  globalScheduler.aiNewsPendingTask = null;
   if (globalScheduler.aiNewsSchedulerTask) {
     globalScheduler.aiNewsSchedulerTask.stop();
     globalScheduler.aiNewsSchedulerTask = null;

@@ -1,16 +1,26 @@
-import { Article } from '@prisma/client';
 import { GitHubTrendingCrawler } from '@/crawlers/GitHubTrendingCrawler';
 import { HackerNewsCrawler } from '@/crawlers/HackerNewsCrawler';
 import { RedditCrawler } from '@/crawlers/RedditCrawler';
 import { RSSCrawler } from '@/crawlers/RSSCrawler';
+import type { ConfiguredSourceCrawler } from '@/crawlers/ConfiguredSourceCrawler';
+import { ArxivCrawler } from '@/crawlers/ArxivCrawler';
+import { GitHubReleaseCrawler } from '@/crawlers/GitHubReleaseCrawler';
 import { ArticleData } from '@/types';
-import { AiProcessingError, processArticleWithAI } from '@/lib/ai/openRouter';
+import type { processArticleWithAI } from '@/lib/ai/openRouter';
 import { startCrawlRun, finishCrawlRun } from '@/lib/crawlRun';
 import { prisma } from '@/lib/prisma';
 import { getAppSettings } from '@/lib/settings';
-import { sendPublishedArticleTelegram } from '@/lib/telegram';
-import { generateContentHash, generateSlug, normalizeCanonicalUrl, titleSimilarity } from '@/lib/utils';
+import { generateSlug } from '@/lib/utils';
+import { getIdentityKey } from '@/lib/news/identity';
+import { createIdentityArticle, findIdentityOwner } from '@/lib/news/storeIdentity';
+import type { RawNewsItem, RankedCandidate } from '@/lib/news/types';
+import { normalizeNews, assessEvidence } from '@/lib/news/normalize';
+import { scoreNews, eventTypeFor } from '@/lib/news/rank';
+import { eventKeyFor, suggestCluster } from '@/lib/news/cluster';
+import { checkpointSourceValidators } from '@/lib/sources/health';
+import { enrichCommunityItem } from '@/lib/news/enrich';
 import { runRepoRadar } from './repoRadar';
+import { processPendingArticles } from './processPending';
 
 export type CrawlPipelineStats = {
   runId: string;
@@ -27,62 +37,79 @@ export type CrawlPipelineStats = {
   errors: string[];
 };
 
-type Candidate = ArticleData & {
+type Candidate = ArticleData & RankedCandidate & {
   canonicalUrl: string;
-  dedupeHash: string;
-  sourceWeight: number;
+  identityKey: string | null;
+  fingerprint: string;
+  pendingFingerprint: string;
+  identityReviewReason: string;
+  processingReason: string;
 };
 
-function sourceWeight(sourceName: string, tags: string[]): number {
-  const text = `${sourceName} ${tags.join(' ')}`.toLowerCase();
-  if (/openai|anthropic|deepmind|google ai|meta ai/.test(text)) return 4;
-  if (/hacker news|reddit|github/.test(text)) return 3;
-  return 1;
-}
-
-function hasEnoughSignal(article: ArticleData): boolean {
-  const url = article.originalUrl || article.sourceUrl;
-  const text = `${article.title} ${article.summaryVi || ''} ${article.contentVi || ''}`.replace(/\s+/g, ' ').trim();
-  return Boolean(url && article.sourceUrl && text.length >= 80);
-}
-
-function toCandidate(article: ArticleData): Candidate {
-  const canonicalUrl = normalizeCanonicalUrl(article.originalUrl || article.sourceUrl);
-  const sourceUrl = normalizeCanonicalUrl(article.sourceUrl);
-  const originalUrl = normalizeCanonicalUrl(article.originalUrl);
-  const dedupeHash = generateContentHash(canonicalUrl || sourceUrl || originalUrl, article.originalTitle || article.title);
+function toCandidate(article: ArticleData, clock: Date): Candidate {
+  const raw: RawNewsItem = article.newsItem || {
+    sourceId: article.sourceId || '',
+    externalId: article.externalId,
+    articleUrl: article.originalUrl,
+    sourceUrl: article.sourceUrl,
+    title: article.originalTitle || article.title,
+    text: article.originalText ?? (article.contentVi || article.summaryVi || ''),
+    publishedAt: article.originalPublishedAt && Number.isFinite(article.originalPublishedAt.getTime())
+      ? article.originalPublishedAt.toISOString() : null,
+    fetchedAt: clock.toISOString(),
+    language: null,
+    evidenceLevel: 'snippet',
+  };
+  const item = normalizeNews(raw);
+  const identityKey = getIdentityKey(item);
+  const fingerprint = item.fingerprint;
+  const gate = assessEvidence(item);
+  const sourceKind = article.sourceKind || 'media';
+  const breakdown = scoreNews(item, { clock, sourceKind });
   return {
     ...article,
-    sourceUrl,
-    originalUrl,
-    canonicalUrl,
-    contentHash: dedupeHash,
-    dedupeHash,
-    sourceWeight: sourceWeight(article.sourceName, article.tags || []),
+    item, breakdown, sourceKind, publisherKey: article.publisherKey || article.sourceName.toLowerCase(), eligibleForAI: gate.eligibleForAI,
+    title: item.title, originalTitle: item.title, originalText: item.originalText,
+    originalPublishedAt: item.publishedAt ? new Date(item.publishedAt) : undefined,
+    category: item.category, importanceScore: breakdown.total, reasonForScore: breakdown.reasons.join('; '),
+    canonicalUrl: item.canonicalUrl,
+    identityKey,
+    fingerprint,
+    pendingFingerprint: '',
+    identityReviewReason: !identityKey ? 'missing-identity' : !item.canonicalUrl ? 'missing-article-url' : '',
+    contentHash: fingerprint,
+    processingReason: gate.reasons.join('; '),
   };
 }
 
-async function fetchCandidates(): Promise<{ candidates: Candidate[]; fetched: number; errors: string[] }> {
+async function fetchCandidates(runId: string, clock: Date): Promise<{ candidates: Candidate[]; fetched: number; errors: string[]; checkpoints: ConfiguredSourceCrawler['checkpoints'] }> {
   const crawlers = [
     new RSSCrawler(),
     new HackerNewsCrawler(),
     new RedditCrawler(),
     new GitHubTrendingCrawler(),
+    new ArxivCrawler(),
+    new GitHubReleaseCrawler(),
   ];
   const candidates: Candidate[] = [];
   const errors: string[] = [];
   let fetched = 0;
+  const enrichmentCache = new Map<string, Promise<string | null>>();
+  const checkpoints: ConfiguredSourceCrawler['checkpoints'] = [];
 
   for (const crawler of crawlers) {
     try {
       console.log(`[Pipeline] Fetching ${crawler.name}`);
+      crawler.runId = runId;
       const articles = await crawler.crawl();
+      errors.push(...crawler.getErrors());
+      checkpoints.push(...crawler.checkpoints);
       fetched += articles.length;
       for (const article of articles) {
-        if (!hasEnoughSignal(article)) {
-          continue;
+        if (['hackernews', 'reddit'].includes(crawler.sourceType) && article.newsItem) {
+          article.newsItem = await enrichCommunityItem(article.newsItem, enrichmentCache);
         }
-        candidates.push(toCandidate(article));
+        candidates.push(toCandidate(article, clock));
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -90,34 +117,7 @@ async function fetchCandidates(): Promise<{ candidates: Candidate[]; fetched: nu
     }
   }
 
-  return { candidates, fetched, errors };
-}
-
-async function findDuplicate(candidate: Candidate): Promise<{ id: string; reason: string } | null> {
-  const orConditions = [
-    candidate.dedupeHash ? { contentHash: candidate.dedupeHash } : null,
-    candidate.canonicalUrl ? { canonicalUrl: candidate.canonicalUrl } : null,
-    candidate.originalUrl ? { originalUrl: candidate.originalUrl } : null,
-    candidate.sourceUrl ? { sourceUrl: candidate.sourceUrl } : null,
-  ].filter(Boolean) as Array<{ contentHash?: string; canonicalUrl?: string; originalUrl?: string; sourceUrl?: string }>;
-
-  if (orConditions.length > 0) {
-    const exact = await prisma.article.findFirst({ where: { OR: orConditions } });
-    if (exact) return { id: exact.id, reason: 'exact-url-or-content-hash' };
-  }
-
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const recent = await prisma.article.findMany({
-    where: {
-      status: { in: ['published', 'pending'] },
-      createdAt: { gte: since },
-    },
-    select: { id: true, title: true },
-    orderBy: { createdAt: 'desc' },
-    take: 300,
-  });
-  const similar = recent.find((article) => titleSimilarity(article.title, candidate.title) >= 0.84);
-  return similar ? { id: similar.id, reason: 'similar-title-last-30-days' } : null;
+  return { candidates, fetched, errors, checkpoints };
 }
 
 async function dedupeCandidates(candidates: Candidate[]): Promise<{ unique: Candidate[]; duplicates: number; errors: string[] }> {
@@ -126,14 +126,18 @@ async function dedupeCandidates(candidates: Candidate[]): Promise<{ unique: Cand
   let duplicates = 0;
 
   for (const candidate of candidates) {
-    const key = candidate.canonicalUrl || candidate.dedupeHash;
+    const key = candidate.identityKey;
     const inRunDuplicate = key ? seenUrls.get(key) : undefined;
-    if (inRunDuplicate || unique.some((item) => titleSimilarity(item.title, candidate.title) >= 0.88)) {
+    if (inRunDuplicate) {
+      if (inRunDuplicate.fingerprint !== candidate.fingerprint) {
+        inRunDuplicate.identityReviewReason = 'conflicting-content-in-run';
+        inRunDuplicate.pendingFingerprint = candidate.fingerprint;
+      }
       duplicates++;
       continue;
     }
 
-    const existing = await findDuplicate(candidate);
+    const existing = await findIdentityOwner(candidate);
     if (existing) {
       duplicates++;
       continue;
@@ -147,13 +151,7 @@ async function dedupeCandidates(candidates: Candidate[]): Promise<{ unique: Cand
 }
 
 function rankCandidates(candidates: Candidate[]): Candidate[] {
-  return [...candidates].sort((a, b) => {
-    if (b.importanceScore !== a.importanceScore) return b.importanceScore - a.importanceScore;
-    if (b.sourceWeight !== a.sourceWeight) return b.sourceWeight - a.sourceWeight;
-    const aTime = a.originalPublishedAt?.getTime() || 0;
-    const bTime = b.originalPublishedAt?.getTime() || 0;
-    return bTime - aTime;
-  });
+  return [...candidates].sort((first, second) => second.importanceScore - first.importanceScore || first.fingerprint.localeCompare(second.fingerprint));
 }
 
 async function uniqueSlug(baseSlug: string): Promise<string> {
@@ -167,26 +165,41 @@ async function uniqueSlug(baseSlug: string): Promise<string> {
   return slug;
 }
 
-async function createArticle(candidate: Candidate, status: 'pending' | 'published' | 'rejected', ai?: Awaited<ReturnType<typeof processArticleWithAI>>, aiError?: string): Promise<Article> {
-  const title = ai?.titleVi || candidate.titleVi || candidate.title;
-  const summaryVi = ai?.briefVi || candidate.briefVi || candidate.summaryVi;
+async function createArticle(candidate: Candidate, status: 'pending' | 'published' | 'rejected', ai?: Awaited<ReturnType<typeof processArticleWithAI>>, aiError?: string) {
+  const vietnameseOriginal = candidate.item.language?.toLowerCase().startsWith('vi');
+  const title = ai?.titleVi || candidate.title;
+  const summaryVi = ai?.briefVi || (vietnameseOriginal ? candidate.item.originalText.slice(0, 450) : '');
   const tags = [...new Set([...(candidate.tags || []), ...(ai?.aiTags || [])])].filter(Boolean);
   const slug = await uniqueSlug(generateSlug(title || candidate.title));
 
-  return prisma.article.create({
-    data: {
+  const gate = assessEvidence(candidate.item);
+  const guardedStatus = candidate.identityReviewReason || gate.requiresReview ? 'pending' : status;
+  const saved = await createIdentityArticle({
       title,
       titleVi: ai?.titleVi || '',
       slug,
       summaryVi,
       briefVi: ai?.briefVi || '',
       whyImportant: ai?.whyImportant || '',
-      contentVi: candidate.contentVi || summaryVi,
+      contentVi: summaryVi,
       sourceName: candidate.sourceName,
       sourceUrl: candidate.sourceUrl,
       originalUrl: candidate.originalUrl,
       originalTitle: candidate.originalTitle || candidate.title,
-      originalPublishedAt: candidate.originalPublishedAt || new Date(),
+      originalPublishedAt: candidate.originalPublishedAt || null,
+      originalText: candidate.item.originalText,
+      originalLanguage: candidate.item.language,
+      evidenceLevel: candidate.item.evidenceLevel,
+      qualityFlags: JSON.stringify(gate.reasons),
+      processingReason: candidate.processingReason,
+      processingStatus: candidate.identityReviewReason || gate.requiresReview || !gate.eligibleForAI ? 'review' : 'queued',
+      eventKey: eventKeyFor(candidate.item),
+      externalVersion: candidate.item.externalVersion,
+      scoreVersion: candidate.breakdown.version,
+      scoreBreakdown: JSON.stringify(candidate.breakdown),
+      publisherKey: candidate.publisherKey,
+      sourceKind: candidate.sourceKind,
+      fetchedAt: new Date(candidate.item.fetchedAt),
       category: candidate.category,
       tags: tags.join(', '),
       aiTags: (ai?.aiTags || []).join(', '),
@@ -194,21 +207,44 @@ async function createArticle(candidate: Candidate, status: 'pending' | 'publishe
       impactLevel: ai?.impactLevel || '',
       importanceScore: candidate.importanceScore,
       reasonForScore: candidate.reasonForScore,
-      status,
+      status: guardedStatus,
       aiProvider: ai?.provider || '',
       aiModel: ai?.model || '',
       aiStatus: ai?.status || (aiError ? 'failed' : 'pending'),
       aiError: aiError?.slice(0, 1000) || '',
       aiProcessedAt: ai || aiError ? new Date() : null,
       canonicalUrl: candidate.canonicalUrl,
-      publishedAt: status === 'published' ? new Date() : null,
-      contentHash: candidate.dedupeHash,
-    },
+      identityKey: candidate.identityKey,
+      sourceId: candidate.sourceId,
+      externalId: candidate.externalId,
+      fingerprint: candidate.fingerprint,
+      pendingFingerprint: candidate.pendingFingerprint,
+      contentChangedAt: candidate.pendingFingerprint ? new Date() : null,
+      identityReviewReason: candidate.identityReviewReason,
+      publishedAt: guardedStatus === 'published' ? new Date() : null,
+      contentHash: candidate.fingerprint,
   });
+  const eventKey = eventKeyFor(candidate.item);
+  if (saved.created && candidate.item.publishedAt && (eventKey || eventTypeFor(candidate.item) !== 'general')) {
+    const clusterKey = eventKey || `review:${saved.article.id}`;
+    const cluster = await prisma.newsCluster.upsert({ where: { eventKey: clusterKey }, create: { eventKey: clusterKey }, update: {} });
+    const neighbor = eventKey ? await prisma.article.findFirst({ where: { eventKey, id: { not: saved.article.id },
+      originalPublishedAt: { gte: new Date(Date.parse(candidate.item.publishedAt) - 72 * 3_600_000), lte: new Date(Date.parse(candidate.item.publishedAt) + 72 * 3_600_000) } } })
+      : null;
+    const neighborItem = neighbor ? normalizeNews({ sourceId: neighbor.sourceId || '', title: neighbor.originalTitle, text: neighbor.originalText,
+      articleUrl: neighbor.originalUrl, sourceUrl: neighbor.sourceUrl, fetchedAt: neighbor.fetchedAt.toISOString(),
+      publishedAt: neighbor.originalPublishedAt?.toISOString() || null, evidenceLevel: 'snippet', language: neighbor.originalLanguage,
+      eventKey: neighbor.eventKey || undefined, externalVersion: neighbor.externalVersion || undefined }) : null;
+    const suggestion = suggestCluster(candidate.item, neighborItem ? [{ clusterId: cluster.id, item: { ...neighborItem, eventKey: candidate.item.eventKey } }] : []);
+    await prisma.newsClusterLink.create({ data: { clusterId: cluster.id, articleId: saved.article.id, confidence: suggestion.confidence,
+      reasons: JSON.stringify(neighbor ? suggestion.reasons : [eventKey ? 'event-anchor' : 'ambiguous-or-insufficient-event-identity', 'requires-editor-review']), status: 'suggested' } });
+  }
+  return saved;
 }
 
 export async function runCrawlPipeline(): Promise<CrawlPipelineStats> {
   const settings = await getAppSettings();
+  const clock = new Date();
   const runId = await startCrawlRun();
   const stats: CrawlPipelineStats = {
     runId,
@@ -227,7 +263,7 @@ export async function runCrawlPipeline(): Promise<CrawlPipelineStats> {
 
   try {
     console.log(`[Pipeline] Crawl run ${runId} started`);
-    const fetched = await fetchCandidates();
+    const fetched = await fetchCandidates(runId, clock);
     stats.fetched = fetched.fetched;
     stats.errors.push(...fetched.errors);
 
@@ -237,71 +273,28 @@ export async function runCrawlPipeline(): Promise<CrawlPipelineStats> {
     stats.errors.push(...deduped.errors);
 
     const ranked = rankCandidates(deduped.unique);
-    const eligible = ranked.filter((candidate) => candidate.importanceScore >= settings.min_score_to_publish);
-    const selected = eligible.slice(0, settings.max_publish_per_crawl);
-    const selectedKeys = new Set(selected.map((candidate) => candidate.dedupeHash));
-
+    const newArticleIds: string[] = [];
     for (const candidate of ranked) {
-      if (!selectedKeys.has(candidate.dedupeHash)) {
-        const status = candidate.importanceScore >= settings.pending_threshold ? 'pending' : 'rejected';
-        await createArticle(candidate, status);
-        if (status === 'pending') stats.pending++;
-        else stats.rejected++;
-        continue;
-      }
-
-      let ai: Awaited<ReturnType<typeof processArticleWithAI>> | undefined;
-      let aiError = '';
-      if (settings.ai_translation_enabled && settings.ai_importance_reason_enabled) {
-        try {
-          ai = await processArticleWithAI({
-            originalTitle: candidate.originalTitle || candidate.title,
-            originalBrief: candidate.summaryVi || candidate.contentVi || candidate.title,
-            sourceName: candidate.sourceName,
-            sourceUrl: candidate.originalUrl || candidate.sourceUrl,
-            category: candidate.category,
-            tags: candidate.tags || [],
-          });
-          stats.aiSuccess++;
-        } catch (error) {
-          const message = error instanceof AiProcessingError || error instanceof Error ? error.message : String(error);
-          aiError = message;
-          stats.aiFailed++;
-          stats.errors.push(`AI failed for "${candidate.title}": ${message}`);
-        }
-      } else {
-        aiError = 'AI processing disabled';
-      }
-
-      const canPublish = Boolean(ai) || settings.allow_publish_without_ai;
-      const article = await createArticle(candidate, canPublish ? 'published' : 'pending', ai, aiError);
-      if (article.status === 'published') {
-        stats.published++;
-        const sent = await sendPublishedArticleTelegram({
-          id: article.id,
-          title: article.title,
-          summaryVi: article.summaryVi,
-          whyImportant: article.whyImportant,
-          importanceScore: article.importanceScore,
-          sourceName: article.sourceName,
-          tags: article.tags,
-          slug: article.slug,
-        });
-        if (sent) {
-          await prisma.article.update({ where: { id: article.id }, data: { telegramSent: true } });
-          stats.telegramSent++;
-          await new Promise((resolve) => setTimeout(resolve, 800));
-        }
-      } else {
-        stats.pending++;
-      }
+      candidate.processingReason ||= candidate.identityReviewReason || (candidate.importanceScore < settings.pending_threshold ? 'below-review-threshold' : 'queued-pending-selection');
+      const saved = await createArticle(candidate, 'pending');
+      if (!saved.created) stats.duplicates++;
+      else { stats.pending++; newArticleIds.push(saved.article.id); }
     }
 
     if (ranked.length === 0) {
       console.log('[Pipeline] No publishable candidates found; crawl still completed');
     }
 
-    const repoRadar = await runRepoRadar();
+    for (const checkpoint of fetched.checkpoints) await checkpointSourceValidators(checkpoint.source, checkpoint.result);
+
+    const processed = await processPendingArticles({ limit: 10, dryRun: false });
+    stats.published += processed.published;
+    stats.aiSuccess += processed.aiSuccess;
+    stats.aiFailed += processed.aiFailed;
+    stats.pending = newArticleIds.length ? await prisma.article.count({ where: { id: { in: newArticleIds }, status: 'pending' } }) : 0;
+    stats.telegramSent += processed.telegramSent;
+    stats.errors.push(...processed.errors);
+    const repoRadar = await runRepoRadar(Math.min(10, settings.max_repo_radar_ai_per_crawl));
     stats.repoRadarFound = repoRadar.found;
     stats.aiSuccess += repoRadar.aiSuccess;
     stats.aiFailed += repoRadar.aiFailed;

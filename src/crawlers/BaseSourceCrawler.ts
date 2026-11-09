@@ -1,8 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import { ArticleData } from '@/types';
-import { generateSlug, generateContentHash } from '@/lib/utils';
-import { calculateScore } from '@/scoring';
-import { getAppSettings } from '@/lib/settings';
+import { generateSlug } from '@/lib/utils';
+import { getIdentityKey } from '@/lib/news/identity';
+import { normalizeNews, assessEvidence } from '@/lib/news/normalize';
+import { scoreNews } from '@/lib/news/rank';
+import { createIdentityArticle, findIdentityOwner } from '@/lib/news/storeIdentity';
 
 export type SavedCrawlerStats = {
   fetched: number;
@@ -18,6 +20,8 @@ abstract class BaseSourceCrawler {
   abstract name: string;
   abstract sourceType: string;
   protected sourceErrors: string[] = [];
+
+  getErrors(): string[] { return [...this.sourceErrors]; }
 
   protected recordError(message: string): void {
     this.sourceErrors.push(message);
@@ -57,90 +61,12 @@ abstract class BaseSourceCrawler {
   abstract fetch(): Promise<ArticleData[]>;
 
   async validateAndScore(item: ArticleData): Promise<ArticleData | null> {
-    const { score, reasons } = calculateScore({
-      sourceName: item.sourceName,
-      title: item.title,
-      content: item.summaryVi || item.title,
-      tags: item.tags,
-      category: item.category,
-      originalPublishedAt: item.originalPublishedAt,
-    });
-
-    const settings = await getAppSettings();
-    let status: 'published' | 'pending' | 'rejected';
-    if (score >= settings.publish_threshold) {
-      status = 'published';
-    } else if (score >= settings.pending_threshold) {
-      status = 'pending';
-    } else {
-      status = 'rejected';
-    }
-
+    if (!item.title.trim()) return null;
     return {
       ...item,
-      importanceScore: score,
-      reasonForScore: reasons.join('; '),
-      status,
+      status: 'pending',
       slug: generateSlug(item.title),
     };
-  }
-
-  private normalizeTitle(title: string): string {
-    return title.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
-  }
-
-  private normalizeUrl(url: string): string {
-    if (!url) return '';
-    try {
-      const parsed = new URL(url);
-      parsed.hash = '';
-      for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']) {
-        parsed.searchParams.delete(key);
-      }
-      return parsed.toString().replace(/\/$/, '');
-    } catch {
-      return url.trim().replace(/\/$/, '');
-    }
-  }
-
-  private titleSimilarity(a: string, b: string): number {
-    const aWords = new Set(this.normalizeTitle(a).split(' ').filter(Boolean));
-    const bWords = new Set(this.normalizeTitle(b).split(' ').filter(Boolean));
-    if (aWords.size === 0 || bWords.size === 0) return 0;
-    let intersection = 0;
-    for (const word of aWords) {
-      if (bWords.has(word)) intersection++;
-    }
-    return intersection / Math.max(aWords.size, bWords.size);
-  }
-
-  private async findDuplicate(article: ArticleData, hash: string) {
-    const originalUrl = this.normalizeUrl(article.originalUrl);
-    const sourceUrl = this.normalizeUrl(article.sourceUrl);
-    const canonicalUrl = originalUrl || sourceUrl;
-
-    const orConditions = [
-      hash ? { contentHash: hash } : null,
-      originalUrl ? { originalUrl } : null,
-      sourceUrl && sourceUrl === originalUrl ? { sourceUrl } : null,
-    ].filter(Boolean) as Array<{ contentHash?: string; originalUrl?: string; sourceUrl?: string }>;
-
-    if (orConditions.length > 0) {
-      const exact = await prisma.article.findFirst({ where: { OR: orConditions } });
-      if (exact) return exact;
-    }
-
-    if (!canonicalUrl) return null;
-
-    const sameSourceCandidates = await prisma.article.findMany({
-      where: {
-        sourceName: article.sourceName,
-        OR: [{ originalUrl: canonicalUrl }, { sourceUrl: canonicalUrl }],
-      },
-      take: 10,
-    });
-
-    return sameSourceCandidates.find((candidate) => this.titleSimilarity(candidate.title, article.title) >= 0.82) || null;
   }
 
   private async uniqueSlug(baseSlug: string): Promise<string> {
@@ -172,31 +98,69 @@ abstract class BaseSourceCrawler {
           continue;
         }
 
-        const originalUrl = this.normalizeUrl(article.originalUrl);
-        const sourceUrl = this.normalizeUrl(article.sourceUrl);
-        const hash = generateContentHash(originalUrl || sourceUrl, article.title);
-        const duplicate = await this.findDuplicate({ ...article, originalUrl, sourceUrl }, hash);
+        const clock = new Date();
+        const normalized = normalizeNews(article.newsItem || {
+          sourceId: article.sourceId || source.id,
+          externalId: article.externalId,
+          articleUrl: article.originalUrl,
+          sourceUrl: article.sourceUrl,
+          title: article.originalTitle || article.title,
+          text: article.originalText ?? (article.contentVi || article.summaryVi),
+          publishedAt: article.originalPublishedAt && Number.isFinite(article.originalPublishedAt.getTime()) ? article.originalPublishedAt.toISOString() : null,
+          fetchedAt: clock.toISOString(),
+          language: null,
+          evidenceLevel: 'snippet',
+        });
+        const canonicalUrl = normalized.canonicalUrl;
+        const identityKey = getIdentityKey(normalized);
+        const fingerprint = normalized.fingerprint;
+        const gate = assessEvidence(normalized);
+        const breakdown = scoreNews(normalized, { clock, sourceKind: article.sourceKind || 'media' });
+        const duplicate = await findIdentityOwner({ identityKey, fingerprint });
         if (duplicate) {
           duplicates++;
           continue;
         }
 
         const slug = await this.uniqueSlug(article.slug || generateSlug(article.title));
-        const { aiTags, ...articleData } = article;
-        const created = await prisma.article.create({
-          data: {
-            ...articleData,
+        const articleData = { ...article };
+        delete articleData.originalText;
+        delete articleData.newsItem;
+        const { aiTags, ...storedData } = articleData;
+        const saved = await createIdentityArticle({
+            ...storedData,
             slug,
             tags: Array.isArray(article.tags) ? article.tags.join(', ') : article.tags,
             aiTags: Array.isArray(aiTags) ? aiTags.join(', ') : aiTags || '',
-            originalPublishedAt: article.originalPublishedAt || new Date(),
-            publishedAt: article.status === 'published' ? new Date() : null,
-            contentHash: hash,
-            originalUrl,
-            sourceUrl,
+            originalPublishedAt: normalized.publishedAt ? new Date(normalized.publishedAt) : null,
+            originalTitle: normalized.title,
+            originalText: normalized.originalText,
+            originalLanguage: normalized.language,
+            fetchedAt: new Date(normalized.fetchedAt),
+            evidenceLevel: normalized.evidenceLevel,
+            qualityFlags: JSON.stringify(gate.reasons),
+            category: normalized.category,
+            summaryVi: normalized.language?.startsWith('vi') ? normalized.originalText.slice(0, 450) : '',
+            contentVi: '',
+            scoreVersion: breakdown.version,
+            scoreBreakdown: JSON.stringify(breakdown),
+            importanceScore: breakdown.total,
+            reasonForScore: breakdown.reasons.join('; '),
+            status: 'pending',
+            publishedAt: null,
+            processingReason: 'legacy-save-requires-pipeline-review',
+            contentHash: fingerprint,
+            fingerprint,
+            identityKey,
+            canonicalUrl,
+            sourceId: article.sourceId || source.id,
             sourceName: article.sourceName,
-          },
         });
+        if (!saved.created) {
+          duplicates++;
+          continue;
+        }
+        const created = saved.article;
 
         if (created.status === 'published') {
           totalPublished++;

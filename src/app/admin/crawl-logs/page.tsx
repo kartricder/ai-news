@@ -12,6 +12,10 @@ type CrawlRun = {
   totalPending: number;
   totalRejected: number;
   errorMessage: string;
+  aiSuccess: number;
+  aiFailed: number;
+  totalDuplicates: number;
+  repoRadarFound: number;
 };
 
 export default function CrawlLogsPage() {
@@ -65,8 +69,8 @@ export default function CrawlLogsPage() {
         </button>
       </div>
       {message && <p className="mb-4 rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700">{message}</p>}
-      <div className="overflow-hidden rounded-lg border border-slate-200">
-        <table className="w-full text-left text-sm">
+      <div className="overflow-x-auto border-y border-slate-200">
+        <table className="w-full min-w-[980px] text-left text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
               <th className="p-3">Bắt đầu</th>
@@ -75,6 +79,9 @@ export default function CrawlLogsPage() {
               <th className="p-3">Published</th>
               <th className="p-3">Pending</th>
               <th className="p-3">Rejected</th>
+              <th className="p-3">AI ok / failed</th>
+              <th className="p-3">Duplicate / Repo</th>
+              <th className="p-3">Warnings</th>
             </tr>
           </thead>
           <tbody>
@@ -86,6 +93,9 @@ export default function CrawlLogsPage() {
                 <td className="p-3">{run.totalPublished}</td>
                 <td className="p-3">{run.totalPending}</td>
                 <td className="p-3">{run.totalRejected}</td>
+                <td className="p-3">{run.aiSuccess} / {run.aiFailed}</td>
+                <td className="p-3">{run.totalDuplicates} / {run.repoRadarFound}</td>
+                <td className="max-w-72 p-3">{run.errorMessage ? <details><summary className="cursor-pointer text-amber-800">Warnings</summary><p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs">{run.errorMessage}</p></details> : '-'}</td>
               </tr>
             ))}
           </tbody>
